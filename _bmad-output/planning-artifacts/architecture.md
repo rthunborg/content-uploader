@@ -188,7 +188,7 @@ _All versions and provider capabilities web-verified 2026-07-07 (research + inde
 Hosting topology (Vercel EU + Railway worker), data access (Drizzle + Supavisor pooling), authorization model (server-only DAL + RLS backstop), session/revocation policy, tamper-evidence mechanism, email/SMS providers (Brevo/46elks), upload wiring (Uppy→Supabase TUS).
 
 **Important Decisions (Shape Architecture):**
-Client state (TanStack Query + RSC), URL filter state (nuqs), forms (react-hook-form + Zod v4), virtualization (TanStack Virtual), testing stack (Vitest/Playwright/axe-core), observability (Sentry EU), CI/CD (GitHub Actions + Vercel git integration + Railway CLI).
+Client state (TanStack Query + RSC), URL filter state (nuqs), forms (react-hook-form + Zod v4), virtualization (TanStack Virtual), testing stack (Vitest/Playwright/axe-core), observability (MVP: structured platform logs via `src/shared/logger.ts`; Sentry EU post-MVP), CI/CD (GitHub Actions + Vercel git integration + Railway CLI).
 
 **Deferred Decisions (Post-MVP, with rationale):**
 v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance seams + EU-transfer constraint); LinkedIn share API (v1.1 — start developer-app approval before the v1.1 cycle); CDN (not required at this scale — adding one creates cache-purge/residency obligations); `cacheComponents` (dynamic-by-default is correct for a fully auth-gated app); realtime channels (polling right-sized; revisit only if polling proves insufficient).
@@ -236,16 +236,16 @@ v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance s
 - **Worker hosting:** **Railway, EU West Metal (Amsterdam)** — Docker service bundling **ffmpeg 8.1.2 static build** (8.1+ mandatory: native tiled HEIC decode added March 2026 — 8.0 cannot reassemble iPhone tile grids; verified) + **sharp 0.35.3** (prebuilt, for JPEG/PNG/WebP thumbnails — prebuilt sharp excludes HEIC, so HEIC stills route through ffmpeg). Worker long-polls **Supabase Queues (pgmq) via `read_with_poll`** over a Postgres connection — the documented external-worker model. Also runs zip-export assembly. Temp-file hygiene per job (100 GB ephemeral disk cap).
 - **Email:** **Brevo** (French, EU-only hosting verified: OVH France/Germany + encrypted backups Google Cloud Belgium; DPA in ToS). SMTP relay for Supabase Auth magic links (Supabase officially lists Brevo; **raise the default 30/hr auth email limit after wiring**); HTTP API + 15 per-recipient webhook event types (delivered/bounces/blocked/error…) for app sends and NFR14 delivery tracking. Free tier 300/day suffices for ~20 users.
 - **SMS:** **46elks** (Swedish, all servers in Sweden). Prepaid balance = verified provider-side hard cap (403 "Not enough credits" on exhaustion — the PRD's exact requirement); low-balance emails < 2 EUR/20 SEK; balance API `/me`; `whendelivered` per-message webhooks (≥5 retries/6 h). **Operational rules:** stay on prepaid top-ups (invoice billing removes the cap); note 200-day credit expiry; record 46elks as independent **data controller** (telecom posture — not processor) in Art. 30 records. Twilio (IE1 Dublin) documented as fallback adapter only — its Usage Triggers are notification-only, failing the cap criterion.
-- **Observability:** **Sentry, EU region (Frankfurt)** selected at org creation (immutable — create the org EU from day one; control-plane metadata stays in US — record in GDPR docs). `@sentry/nextjs 10.63.0` (Next 16 peer-verified). Team plan $26/mo (or free Developer tier initially).
+- **Observability (MVP: platform logs; Sentry DEFERRED to post-MVP — decision 2026-07-08, see `launch-decisions.md`):** MVP ships **no Sentry**. Unexpected errors and critical alerts route through a runtime-neutral **error-logging seam** (`src/shared/logger.ts`, imported by both app and worker) that writes structured JSON to stdout — captured by **Vercel** and **Railway** platform logs (both EU). Post-MVP swaps in **Sentry, EU region (Frankfurt)** behind the same seam without touching call sites (`@sentry/nextjs 10.63.0`, Next 16 peer-verified; org created EU from day one — region is immutable; control-plane metadata stays US — record in GDPR docs; Team plan $26/mo or free Developer tier). MVP observability cost = $0.
 - **CI/CD:** GitHub Actions — lint/typecheck/Vitest 4.1.10/Playwright 1.61.1 + @axe-core/playwright 4.12.1 on PR; `supabase db push` for migrations; Railway worker deploy via `ghcr.io/railwayapp/cli` container + project-token `railway up`; Vercel deploys via git integration.
 - **Backups & erasure position (NFR16 vs NFR11 resolution):** Supabase Pro daily backups; **backup retention documented at ≤ 30 days** so erased data ages out within the Art. 17 window; restore runbook includes a re-apply-erasures step (recent deletion audit events + a manual check); position folded into the pending legal review.
-- **Running cost envelope:** Supabase Pro $25 + Vercel Pro $20 + Railway ~$5–20 + Sentry $0–26 + Brevo $0 + 46elks per-SMS ≈ **$50–90/month** — the NFR17 stakeholder cost line.
+- **Running cost envelope:** Supabase Pro $25 + Vercel Pro $20 + Railway ~$5–20 + Brevo $0 + 46elks per-SMS ≈ **$50–65/month for MVP** (Sentry deferred → $0 in MVP; adds $0–26 when introduced post-MVP, keeping the prior ~$50–90 envelope) — the NFR17 stakeholder cost line.
 
 ### Decision Impact Analysis
 
 **Implementation Sequence:**
 
-1. Scaffold (with-supabase example + shadcn `-b radix` + Fleet Deck tokens); Supabase project in eu-north-1; Vercel arn1 + Railway Amsterdam wiring; Sentry EU org.
+1. Scaffold (with-supabase example + shadcn `-b radix` + Fleet Deck tokens); Supabase project in eu-north-1; Vercel arn1 + Railway Amsterdam wiring; `src/shared/logger.ts` error-logging seam (Sentry post-MVP).
 2. Data model + migrations (Drizzle): profiles/state machine, terms + acceptance records (INSERT-only + HMAC chain), assets (origin enum), tags, tasks, audit events, usage/export events, send records.
 3. Auth spine: magic-link flows, proxy.ts (getClaims routing), DAL with getUser + consent gate + role scoping; RLS backstop policies.
 4. Upload pipeline (Uppy→TUS→staging→commit) and transcoding worker (pgmq + ffmpeg 8.1) — the PRD's build-first subsystems.
@@ -257,7 +257,7 @@ v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance s
 - The pgmq + worker substrate serves transcoding, zip export, and (v1.1) AI generation — one pattern, three consumers.
 - Acceptance-record versioning must exist before legal review completes (any wording change = new terms version through FR8).
 - Uppy chunk size (6 MB exact) and the staging-commit protocol jointly implement NFR13 — changing either breaks atomicity assumptions.
-- Sentry org region and Supabase project region are immutable-at-creation — both must be EU on day one.
+- Supabase project region is immutable-at-creation — must be EU on day one (eu-north-1 Stockholm). (Sentry's org region is likewise immutable, but Sentry is deferred to post-MVP; when introduced, create the org EU.)
 
 ## Implementation Patterns & Consistency Rules
 
@@ -328,7 +328,7 @@ supabase/                   # migrations (drizzle-kit output), config.toml
   `db.transaction(async (tx) => { …mutation…; await audit.emit(tx, event); await jobs.enqueue(tx, 'transcode_jobs', payload); })`
   — `audit.emit` and `jobs.enqueue` take the tx handle as first argument (pgmq.send is plain SQL — transactional enqueue works). Calling either with the global client is a violation. **Storage-coupled mutations:** DB rows + audit event commit first; storage operations run after commit; orphaned storage objects are swept by the scheduled orphan-GC job.
 - **Queues:** pgmq names snake_case (`transcode_jobs`, `export_jobs`); payloads versioned `{ v: 1, ... }` validated by Zod schemas in `src/shared`; handlers idempotent — check the entity's status column first, treat "already done" as success; max 3 receives → archive + mark `failed` (UI-retryable).
-- **Webhooks:** verify Brevo signature / 46elks Basic-auth **before parsing**; unverified → 401, no detail. Resolve by `provider_message_id` (UNIQUE per provider); apply a **monotonic status lattice** (never downgrade `delivered`); append raw payload to `raw_events`; return 200 for unknown ids (log to Sentry). Provider-event → canonical `send_status` mapping lives in each channel adapter.
+- **Webhooks:** verify Brevo signature / 46elks Basic-auth **before parsing**; unverified → 401, no detail. Resolve by `provider_message_id` (UNIQUE per provider); apply a **monotonic status lattice** (never downgrade `delivered`); append raw payload to `raw_events`; return 200 for unknown ids (log via the error-logging seam). Provider-event → canonical `send_status` mapping lives in each channel adapter.
 - **State doctrine (three categories):** server state in TanStack Query; **filter/sort/search state URL-canonical via nuqs** (camelCase params; components read from URL, never useState; query keys derive from parsed URL state); local UI state in components. No global client store; exception: the Uppy instance in a React context provider.
 - **Query conventions:** per-feature key factories (`assetKeys.list(filters)`); default `staleTime` 30 s; polling `refetchInterval`: processing status 3 s, export jobs 5 s, delivery status 15 s — all stop on terminal states; constants in `src/lib/query-config.ts`.
 - **Optimistic-update verb table:** OPTIMISTIC (onMutate patch + rollback + invalidate on settle): star/unstar, tag/untag. SERVER-ACK then invalidate: dismiss/mark-triaged, task mark-done, sends, profile edits. NEVER optimistic (honest-state doctrine): uploads, processing, exports, consent, deletion, budget state. New verbs default to server-ack unless added here.
@@ -346,7 +346,7 @@ supabase/                   # migrations (drizzle-kit output), config.toml
 - **KPI columns (durable, never derived from the expiring audit log):** `profiles.invited_at / first_accepted_at / first_upload_at / last_login_at` (DAL-updated); `tasks.created_at / fulfilled_at`; `task_recipients.completed_at` — **task completion is per-recipient** (each recipient marks their own card done; `tasks.fulfilled_at` = first recipient completion, feeding the 7-day fulfillment KPI). _Resolves Open Question 4._
 - **Export naming:** `src/shared/export-naming.ts` (worker + app both import): slug = lowercase, NFC-normalize, å/ä→a, ö→o, non-alnum→hyphen; date = **Europe/Stockholm calendar date** of upload completion; `nn` = zero-padded sequence per (ambassador, date) within the export, ordered by `created_at`; original extension preserved.
 - **Loading:** skeletons after 200 ms delay, layout space reserved, no blocking spinners; TanStack `isPending` naming.
-- **Errors:** DAL throws typed `DomainError` subclasses (code + user-safe message + remedy); route handlers map to the envelope; server actions (allowed only for non-interactive form posts: consent accept/decline, login email) return the same error object — never throw to the client. All other client-interactive mutations are route handlers via `useMutation`. Sentry captures unexpected errors only — domain errors are product states, not incidents.
+- **Errors:** DAL throws typed `DomainError` subclasses (code + user-safe message + remedy); route handlers map to the envelope; server actions (allowed only for non-interactive form posts: consent accept/decline, login email) return the same error object — never throw to the client. All other client-interactive mutations are route handlers via `useMutation`. Unexpected errors are recorded via the error-logging seam (`src/shared/logger.ts` → structured platform logs in MVP; Sentry post-MVP) — domain errors are product states, not incidents and are never logged as such.
 - **Validation:** Zod schemas in `features/*/schemas` shared by client forms and server boundaries; caps + `UPLOAD_CHUNK_SIZE` in `src/shared/limits.ts` only.
 - **Supabase clients:** factories at `src/lib/supabase/{browser,server,admin}.ts`. Browser client = **Auth + TUS upload only**; client-side `.from()` table access is a violation (RLS is backstop, not API). Env canon (in `.env.example`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY`, `DATABASE_URL` (transaction pooler 6543, app), `DATABASE_SESSION_URL` (worker), `DIRECT_URL` (migrations), `ACCEPTANCE_HMAC_KEY`, `BREVO_API_KEY`, `BREVO_WEBHOOK_SECRET`, `ELKS_API_USERNAME`, `ELKS_API_PASSWORD`, `SENTRY_DSN`.
 
@@ -385,7 +385,7 @@ _Tree verified by two agents: FR-coverage walk (FR1–FR36 → every requirement
 
 1. **Feature list:** `admin` renamed to `ambassadors` (avoids collision with the `(admin)` route group and `dal/admin.ts` role convention).
 2. **Worker import surface:** `worker/` may import `src/db/schema` + `src/shared` + its own `worker/lib/`. The audit emitter and job enqueuer move to `src/shared/` (runtime-neutral, take a Drizzle tx handle) so the worker can emit audit events; `src/lib/auth.ts` contexts remain app-only — worker jobs pass `actor: 'system'` explicitly.
-3. **Scheduled-job mechanics corrected:** pure pg_cron SQL only works for the audit expiry. The HMAC chain-verification and orphan-GC jobs run **in the worker** (pg_cron enqueues onto a `maintenance_jobs` pgmq queue on schedule; worker consumes) — the HMAC key lives in worker env, and storage-prefix deletion needs the S3 API. Chain-verification failure alerts to Sentry.
+3. **Scheduled-job mechanics corrected:** pure pg_cron SQL only works for the audit expiry. The HMAC chain-verification and orphan-GC jobs run **in the worker** (pg_cron enqueues onto a `maintenance_jobs` pgmq queue on schedule; worker consumes) — the HMAC key lives in worker env, and storage-prefix deletion needs the S3 API. Chain-verification failure alerts via the error-logging seam (critical structured log in MVP, captured by Railway platform logs; Sentry alerting post-MVP).
 4. **Third storage bucket:** `exports` (private, keys `exports/{exportId}.zip`, regenerable) — zips expire after 7 days via the maintenance queue; download via the 302 pattern.
 5. **Auth namespace:** `/auth/error` added (expired/used-link landing, `LINK_EXPIRED` remedy page per FR3).
 6. **Consent-gate scope (resolves Open Question 2):** the consent cards grant upload/likeness rights — they apply to **ambassadors only**. `requireAdmin()` skips the consent-version gate. Admin accounts are provisioned via `scripts/create-admin.ts` (service-role: sets `app_metadata.admin`, creates profile row); first admin seeded manually at setup.
@@ -398,7 +398,7 @@ _Tree verified by two agents: FR-coverage walk (FR1–FR36 → every requirement
 stena-content-portal/
 ├── README.md
 ├── package.json                      # scripts: dev, build, worker, test, e2e, db:generate, db:push
-├── next.config.ts                    # Sentry-wrapped
+├── next.config.ts                    # plain in MVP (wrap with Sentry post-MVP)
 ├── postcss.config.mjs                # Tailwind v4
 ├── tsconfig.json
 ├── eslint.config.mjs                 # + no-restricted-imports boundary rules
@@ -421,11 +421,11 @@ stena-content-portal/
 │                                     #   audit expiry SQL, maintenance_jobs enqueues)
 ├── src/
 │   ├── proxy.ts                      # Next 16: cheap getClaims() routing ONLY
-│   ├── instrumentation.ts            # Sentry server init
-│   ├── instrumentation-client.ts     # Sentry client init
+│   ├── instrumentation.ts            # server init + error-logging seam (add Sentry post-MVP)
+│   ├── instrumentation-client.ts     # POST-MVP only (client Sentry) — omit in MVP
 │   ├── app/
 │   │   ├── layout.tsx  globals.css   # Fleet Deck tokens (Tailwind v4 CSS-first)
-│   │   ├── global-error.tsx          # Sentry-reporting root error boundary
+│   │   ├── global-error.tsx          # root error boundary → logs via seam (Sentry reporting post-MVP)
 │   │   ├── (ambassador)/             # URL: root namespace
 │   │   │   ├── layout.tsx            # bottom tab bar (Tasks/Upload/My uploads/Profile)
 │   │   │   ├── page.tsx              # "/" → redirect to /tasks
@@ -506,7 +506,7 @@ stena-content-portal/
 │       └── queue-payloads.ts          # Zod schemas: transcode_jobs, export_jobs, maintenance_jobs
 ├── worker/                            # Railway deployable
 │   ├── Dockerfile                     # node:22 + ffmpeg 8.1.x static build
-│   ├── index.ts                       # pgmq read_with_poll loop (all queues) + Sentry init
+│   ├── index.ts                       # pgmq read_with_poll loop (all queues) + error-logging seam init (Sentry post-MVP)
 │   ├── jobs/{transcode,export-zip,orphan-gc,verify-acceptance-chain}.ts
 │   ├── lib/{db,ffmpeg,storage}.ts     # db = Drizzle on DATABASE_SESSION_URL; storage = S3 client
 │   └── tsconfig.json
@@ -549,7 +549,7 @@ stena-content-portal/
 - **Export:** SelectionBar → `POST /api/exports` (size estimate → export_record + `export_jobs`) → worker streams originals → zip in `exports` bucket → 5 s poll → "export ready" → 302 download.
 - **Messaging:** compose → dispatch (suppression check → per-channel adapter → send_records) → provider webhooks → status lattice updates → 15 s poll surfaces failures (NFR14).
 - **Scheduled:** pg_cron: audit-expiry SQL (direct), `maintenance_jobs` enqueues (orphan-GC daily, chain-verify daily, export-zip cleanup) → worker handlers.
-- **External services:** Supabase (Auth/Storage/Postgres/pgmq, Stockholm) · Brevo (SMTP for auth mail + API/webhooks) · 46elks (REST + webhooks) · Sentry EU (app + worker) · Vercel arn1 (app) · Railway Amsterdam (worker).
+- **External services:** Supabase (Auth/Storage/Postgres/pgmq, Stockholm) · Brevo (SMTP for auth mail + API/webhooks) · 46elks (REST + webhooks) · Vercel arn1 (app) · Railway Amsterdam (worker) · Sentry EU (app + worker) — **POST-MVP**.
 
 ### Development Workflow Integration
 
@@ -609,7 +609,7 @@ The decision spine is compatible end-to-end (versions re-verified 2026-07-07; on
 21. **OQ8 position:** audit_events are **never modified by erasure**; the 6-month auto-expiry is the accepted bound for actor names **pending external legal confirmation** (added to the legal-review bundle, alongside the lawful-basis note for pseudonymous `user_id_snapshot` retention). Durable erasure evidence = acceptance tombstones + `erasure_records`.
 22. **OQ10 resolved:** MediaPreview renders `<track>` elements when a caption stream exists; MVP renditions do not extract or generate caption tracks (per UX pragmatic stance).
 23. **TUS consent-gate residual stated:** chunk traffic is gated by Storage RLS + ≤10-min JWT TTL; the commit endpoint is the authoritative consent/revocation checkpoint — a revoked/withdrawn user can push chunks for at most ~10 minutes but can never commit. Accepted.
-24. **Sentry retention** added to the processor inventory (EU event data, US control-plane metadata, 30–90 day retention per plan).
+24. **Sentry retention** noted for the processor inventory when introduced (EU event data, US control-plane metadata, 30–90 day retention per plan) — **Sentry is deferred to post-MVP (2026-07-08); not part of the MVP processor set.**
 
 ### Gap Analysis Results
 

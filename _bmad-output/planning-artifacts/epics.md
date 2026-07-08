@@ -151,7 +151,7 @@ This document provides the complete epic and story breakdown for stena-content-p
 - AR2: Supabase (EU, Stockholm) is the backend platform: Postgres, Auth, Storage (TUS), Queues (pgmq), Cron (pg_cron). Region is immutable — must be EU on day one
 - AR3: App hosting on Vercel Pro with functions pinned to arn1 (Stockholm); media bytes never transit Vercel (TUS direct-to-storage up, 302 signed URLs down)
 - AR4: Transcoding/export worker hosted on Railway (EU West, Amsterdam): Docker service with ffmpeg 8.1.x static build + sharp; long-polls pgmq via `read_with_poll` over a Postgres session connection; worker ↔ app communicate only through Postgres and object storage
-- AR5: Observability via Sentry EU (Frankfurt) — org created EU from day one (immutable); app + worker instrumented
+- AR5: Observability — **MVP ships NO Sentry (deferred to post-MVP, decision 2026-07-08, `launch-decisions.md`).** Unexpected errors and critical alerts route through a runtime-neutral error-logging seam (`src/shared/logger.ts`, app + worker) writing structured JSON to stdout, captured by Vercel + Railway platform logs (both EU). Post-MVP swaps **Sentry EU (Frankfurt)** in behind the same seam (org created EU from day one, immutable; app + worker instrumented)
 - AR6: CI/CD via GitHub Actions: typecheck → lint → Vitest → Playwright + axe-core → on main: `supabase db push` (migrations) → `railway up` (worker); Vercel deploys via git integration gated by checks
 - AR7: Testing stack: Vitest (co-located unit tests for DAL functions), Playwright e2e for journey-level specs (onboarding-consent, task-upload, triage, library-export, offboarding) with axe checks inside critical-flow specs; upload torture test and throttled-4G task-link→upload check in the e2e plan
 - AR8: Running cost envelope ≈ $50–90/month surfaced as the NFR17 stakeholder cost line
@@ -162,7 +162,7 @@ This document provides the complete epic and story breakdown for stena-content-p
 - AR10: Zod v4 as the single validation layer shared client/server; per-type size caps and error copy defined once in `src/shared/limits.ts`, consumed by client validation and server enforcement
 - AR11: Single `assets` table with three-value `origin` enum (`ambassador|admin|generated`) from day one; text columns + CHECK constraints instead of pgEnum; v1.1 seams provisioned now: provenance/version columns in asset identity, nullable campaign seams on tasks/events, purpose param in `/auth/confirm`
 - AR12: Four retention classes as separate tables/lifecycles: content (until deleted, then gone); `audit_events` (INSERT-only, 6-month pg_cron expiry scoped to that table only, entity snapshots — never FK to live rows); `acceptance_records` (INSERT-only, indefinite, no FK to users, denormalized identity snapshots); durable usage/export/send event tables (no expiry; mutable only for erasure attribution purges)
-- AR13: Tamper evidence (NFR10): acceptance records get a per-record HMAC chain (key `ACCEPTANCE_HMAC_KEY` in app+worker env, never in DB); PII snapshot columns encrypted per-user (crypto-shredding via `consent_pii_keys` table); Art. 17 erasure deletes the key and appends a signed tombstone; scheduled worker job `verify-acceptance-chain` alerts Sentry on failure
+- AR13: Tamper evidence (NFR10): acceptance records get a per-record HMAC chain (key `ACCEPTANCE_HMAC_KEY` in app+worker env, never in DB); PII snapshot columns encrypted per-user (crypto-shredding via `consent_pii_keys` table); Art. 17 erasure deletes the key and appends a signed tombstone; scheduled worker job `verify-acceptance-chain` alerts via the error-logging seam on failure (Sentry post-MVP)
 - AR14: KPI columns are an MVP schema requirement (durable, never derived from expiring audit log): `profiles.invited_at/first_accepted_at/first_upload_at/last_login_at`; `tasks.created_at/fulfilled_at`; `task_recipients.completed_at` — task completion is per-recipient; `tasks.fulfilled_at` = first recipient completion
 - AR15: `tasks.due_at` (nullable) — display-only (TaskCard "Due" badge and expired-quiet state); no enforcement, no reminders, no KPI effect
 - AR16: FR15 mechanics: `assets.task_id` nullable FK set by upload-init when entering from a task, validated against an open task addressed to the session user
@@ -193,7 +193,7 @@ This document provides the complete epic and story breakdown for stena-content-p
 
 - AR33: Email via Brevo (EU): SMTP relay for Supabase Auth magic links (raise default 30/hr auth email limit), HTTP API + per-recipient webhooks for app sends; SMS via 46elks (Sweden): prepaid balance = provider-side hard cap, `whendelivered` webhooks; operational rules: stay on prepaid, note 200-day credit expiry, record 46elks as independent data controller; Twilio documented as fallback adapter only
 - AR34: Channel adapters (`brevo.ts`, `elks.ts`) are the only modules touching provider APIs; independent per-channel dispatch with bounded timeouts (SMS failure never blocks email — NFR20); per-recipient `send_records`; send-suppression for inactive accounts enforced in the dispatch path; persisted binary SMS budget state (403 "Not enough credits" → flag, disable SMS pre-send until balance restored via `/me` polling); Brevo quota-exceeded maps to BUDGET_REACHED
-- AR35: Webhooks `/api/webhooks/brevo` + `/api/webhooks/46elks`: verify signature/Basic-auth before parsing (unverified → 401 no detail); resolve by provider_message_id (UNIQUE); monotonic status lattice (never downgrade `delivered`); append raw payload; 200 for unknown ids (log to Sentry)
+- AR35: Webhooks `/api/webhooks/brevo` + `/api/webhooks/46elks`: verify signature/Basic-auth before parsing (unverified → 401 no detail); resolve by provider_message_id (UNIQUE); monotonic status lattice (never downgrade `delivered`); append raw payload; 200 for unknown ids (log via the error-logging seam)
 - AR36: Auth email delivery tracking: Supabase Send-Email hook dispatches magic-link/invite emails through the app's Brevo adapter so every auth email gets a send_record + webhook tracking; bounced invites surface on the admin messages page (verify hook capability at implementation time; fallback: ingest unknown-id Brevo webhooks keyed by recipient + template class)
 - AR37: SPF/DKIM/DMARC configuration against Stena's actual mail environment is a launch-checklist item (magic links are the only way in)
 
@@ -225,7 +225,7 @@ This document provides the complete epic and story breakdown for stena-content-p
 **API, Errors & Frontend Conventions**
 
 - AR51: API surface: server components for reads, route handlers for client-interactive mutations and webhooks, server actions only for simple non-interactive form posts (consent accept/decline, login email); no separate API tier, no versioning; lists always `{ items, nextCursor }` (opaque keyset cursor)
-- AR52: Error envelope `{ error: { code, message, remedy? } }` with canonical code→HTTP map (incl. CONSENT_REQUIRED 409 with `next`, BUDGET_REACHED 429, LINK_EXPIRED 410, UPLOAD_INCOMPLETE 409); typed DomainError subclasses in DAL; global QueryCache onError routes SESSION_REVOKED → login and CONSENT_REQUIRED → consent (features never handle these locally); provider errors normalized at adapter boundary (FR36); Sentry captures unexpected errors only
+- AR52: Error envelope `{ error: { code, message, remedy? } }` with canonical code→HTTP map (incl. CONSENT_REQUIRED 409 with `next`, BUDGET_REACHED 429, LINK_EXPIRED 410, UPLOAD_INCOMPLETE 409); typed DomainError subclasses in DAL; global QueryCache onError routes SESSION_REVOKED → login and CONSENT_REQUIRED → consent (features never handle these locally); provider errors normalized at adapter boundary (FR36); unexpected errors go to the error-logging seam (`src/shared/logger.ts` — structured platform logs in MVP, Sentry post-MVP)
 - AR53: Frontend stack: TanStack Query 5 (RSC prefetch + HydrationBoundary), nuqs for URL-canonical filter state, react-hook-form + Zod 4, TanStack Virtual for GalleryGrid; route groups `(ambassador)` (root URLs, `/` → `/tasks`) and `(admin)` (`/admin/*` URLs); optimistic-update verb table: OPTIMISTIC star/tag; SERVER-ACK dismiss/mark-done/sends/profile edits; NEVER optimistic uploads/processing/exports/consent/deletion/budget
 - AR54: Project structure per architecture tree: `features/<feature>/{dal,queries,components,schemas,hooks}`, server-only DAL boundary (route handlers never import db client), runtime-neutral `src/shared` kernel (no next/React/server-only — worker imports it), worker imports only `src/db/schema` + `src/shared` + worker-local lib (eslint `no-restricted-imports` enforced); features never import each other's DAL; kebab-case files; `Row`-suffix type rule; timestamps rendered Europe/Stockholm via one Intl helper, wire stays UTC ISO
 - AR55: Enforcement rules for AI agents (architecture "Enforcement Guidelines"): DAL-only table access with correct auth context; tx-threaded audit emission from the closed registry; limits/slugs/naming/queue schemas from `src/shared` only; never change 6 MB chunk size, bypass staging commit, add UPDATE paths or FKs to acceptance_records/audit_events, or let expiry cron touch other tables; co-located DAL tests + Playwright for journey changes; typecheck + lint + tests before completion
@@ -338,7 +338,7 @@ FR48: Epic 9 — Stats page + audit-trail viewer UI (v1.1)
 ## Epic List
 
 ### Epic 1: Platform Foundation & Passwordless Access
-Establishes the EU-pinned application on its confirmed stack (scaffold from the `with-supabase` example, Supabase Stockholm, Vercel arn1, Railway worker shell, Sentry EU, CI/CD) and delivers the auth spine: any provisioned user logs in through one magic-link front door with no passwords, sessions revoke immediately on demand, and requests pass through the server-only DAL choke point with role separation, the account state machine, the closed audit-event emitter, and the RLS backstop. After this epic a seeded admin can sign in, the Fleet Deck design tokens and base interaction patterns exist, and every later mutation is auditable and role-scoped by construction.
+Establishes the EU-pinned application on its confirmed stack (scaffold from the `with-supabase` example, Supabase Stockholm, Vercel arn1, Railway worker shell, structured error-logging seam, CI/CD — Sentry deferred to post-MVP) and delivers the auth spine: any provisioned user logs in through one magic-link front door with no passwords, sessions revoke immediately on demand, and requests pass through the server-only DAL choke point with role separation, the account state machine, the closed audit-event emitter, and the RLS backstop. After this epic a seeded admin can sign in, the Fleet Deck design tokens and base interaction patterns exist, and every later mutation is auditable and role-scoped by construction.
 **FRs covered:** FR1, FR2, FR3, FR34
 **NFRs:** NFR6, NFR7, NFR8, NFR9, NFR15, NFR18 (foundation)
 **Architecture:** AR1–AR6, AR9–AR12, AR18–AR24, AR43, AR51–AR55
@@ -421,16 +421,16 @@ So that all later work builds on the confirmed, compliant, AI-legible foundation
 
 **Given** the infrastructure must satisfy EU residency (NFR9) and no-media-through-Vercel (AR3),
 **When** hosting is configured,
-**Then** `vercel.json` pins functions to `arn1`, a Railway worker service shell (Docker, EU West/Amsterdam) exists and builds, a Sentry **EU (Frankfurt)** org is created (region is immutable at creation), and Supabase is the platform for Postgres, Auth, Storage (TUS), Queues (pgmq), and Cron.
+**Then** `vercel.json` pins functions to `arn1`, a Railway worker service shell (Docker, EU West/Amsterdam) exists and builds, and Supabase is the platform for Postgres, Auth, Storage (TUS), Queues (pgmq), and Cron. **Sentry is deferred to post-MVP — no Sentry org is created now; error observability is the `src/shared/logger.ts` seam (Story 1.7).**
 
 **Given** environment configuration must be single-sourced,
 **When** the repo is set up,
-**Then** `.env.example` contains the full env canon (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DATABASE_URL` on the transaction pooler 6543, `DATABASE_SESSION_URL`, `DIRECT_URL`, `ACCEPTANCE_HMAC_KEY`, `BREVO_*`, `ELKS_*`, `SENTRY_DSN`),
+**Then** `.env.example` contains the full MVP env canon (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DATABASE_URL` on the transaction pooler 6543, `DATABASE_SESSION_URL`, `DIRECT_URL`, `ACCEPTANCE_HMAC_KEY`, `BREVO_*`, `ELKS_*`; `SENTRY_DSN` is post-MVP, not included in MVP),
 **And** `noindex` headers are applied globally and no public pages exist beyond the login/link-consumption routes.
 
 **Given** the US-owned-processor legal question is **resolved — accepted 2026-07-08** (AR56, `launch-decisions.md`: US-owned vendors hosting in EU regions under SCC/DPA are approved),
 **When** the stack is committed,
-**Then** the processor inventory (Supabase/Vercel/Railway/Brevo/46elks/Sentry — all EU-region) is recorded in project docs for the GDPR record, and the stack proceeds as specified with no EU-owned-only constraint.
+**Then** the processor inventory (Supabase/Vercel/Railway/Brevo/46elks — all EU-region; Sentry added to the inventory only when introduced post-MVP) is recorded in project docs for the GDPR record, and the stack proceeds as specified with no EU-owned-only constraint.
 
 ### Story 1.2: Data-layer foundation, migrations & account schema
 
@@ -530,7 +530,7 @@ So that role separation and immediate revocation are structural, not per-feature
 
 **Given** the canonical error contract (AR52),
 **When** any DAL error surfaces,
-**Then** it maps to the `{ error: { code, message, remedy? } }` envelope on the canonical code→status map, the global QueryCache routes `SESSION_REVOKED` → login and `CONSENT_REQUIRED` → consent centrally, and Sentry captures only unexpected errors (domain errors are product states).
+**Then** it maps to the `{ error: { code, message, remedy? } }` envelope on the canonical code→status map, the global QueryCache routes `SESSION_REVOKED` → login and `CONSENT_REQUIRED` → consent centrally, and unexpected errors are recorded via the error-logging seam (`src/shared/logger.ts` — structured platform logs in MVP; Sentry post-MVP) while domain errors are product states.
 
 ### Story 1.6: Audit event emitter & registry
 
@@ -553,11 +553,11 @@ So that the audit trail is complete from day one and is the program's compliance
 **When** a mutation also touches object storage,
 **Then** DB rows + audit event commit first and storage operations run after commit (orphans swept later), and calling `audit.emit` with the global client instead of the tx handle is a lint-guarded violation.
 
-### Story 1.7: CI/CD pipeline & EU observability
+### Story 1.7: CI/CD pipeline & error-logging seam
 
 As the solo developer,
-I want automated checks and error reporting wired before feature work,
-So that every change ships gated and every incident is visible.
+I want automated checks and a structured error-logging seam wired before feature work,
+So that every change ships gated and every incident is visible in platform logs (with Sentry a clean post-MVP swap).
 
 **Acceptance Criteria:**
 
@@ -570,9 +570,10 @@ So that every change ships gated and every incident is visible.
 **When** checks pass,
 **Then** `supabase db push` applies migrations, `railway up` deploys the worker container, and Vercel deploys the app via git integration.
 
-**Given** observability (AR5),
+**Given** MVP observability with Sentry deferred to post-MVP (AR5),
 **When** the app and worker run,
-**Then** Sentry (EU) is initialized in both (`instrumentation.ts` / worker init), unexpected errors are captured, and the EU-event/US-control-plane split is recorded in the GDPR processor inventory.
+**Then** a runtime-neutral error-logging seam (`src/shared/logger.ts`) is initialized in both (app via `instrumentation.ts`, worker via its init) and writes structured JSON errors/critical alerts to stdout, captured by Vercel + Railway platform logs (both EU),
+**And** the seam is the single call site for unexpected-error capture so a post-MVP Sentry transport swaps in behind it without touching call sites; **no Sentry, `@sentry/nextjs`, `instrumentation-client.ts`, or `SENTRY_DSN` is wired in MVP.**
 
 ## Epic 2: Ambassador Accounts & Lifecycle Management
 
@@ -684,7 +685,7 @@ So that every acceptance is provable and every terms change is a new version.
 
 **Given** GDPR erasure must be distinguishable from tampering (AR13),
 **When** PII snapshot columns are stored,
-**Then** they are encrypted per-user via a `consent_pii_keys` table (crypto-shredding), the scheduled `verify-acceptance-chain` worker job alerts Sentry on chain-integrity failure, and the erasure-shred + signed-tombstone path is provided for Epic 7 to invoke.
+**Then** they are encrypted per-user via a `consent_pii_keys` table (crypto-shredding), the scheduled `verify-acceptance-chain` worker job alerts via the error-logging seam on chain-integrity failure (critical structured log captured by Railway platform logs; Sentry alerting post-MVP), and the erasure-shred + signed-tombstone path is provided for Epic 7 to invoke.
 
 ### Story 3.2: First-login consent card flow
 
@@ -908,7 +909,7 @@ So that an undelivered magic link becomes a visible admin problem, not a silent 
 
 **Given** delivery webhooks (AR35, NFR14),
 **When** a provider posts a status,
-**Then** `/api/webhooks/brevo` and `/api/webhooks/46elks` verify signature/Basic-auth before parsing (unverified → 401 no detail), resolve by `provider_message_id` (UNIQUE), apply a monotonic status lattice (never downgrade `delivered`), append the raw payload, and return 200 for unknown ids (logged to Sentry).
+**Then** `/api/webhooks/brevo` and `/api/webhooks/46elks` verify signature/Basic-auth before parsing (unverified → 401 no detail), resolve by `provider_message_id` (UNIQUE), apply a monotonic status lattice (never downgrade `delivered`), append the raw payload, and return 200 for unknown ids (logged via the error-logging seam).
 
 **Given** auth-email tracking (AR36, NFR14),
 **When** Supabase Auth sends a magic-link or invite email,

@@ -31,6 +31,7 @@ Resolutions to the non-code launch gates carried in the PRD, Architecture (AR56)
 | 9 | Colour derived-values | **Approved as recommended:** blue celebration (not green), Core Blue star (not yellow), hover/pressed tints ±8–12% | Stakeholder | ✅ Closed |
 | 10 | UI copy language (EN vs SV) | **Swedish** — all user-facing copy is always Swedish | Rasmus | ✅ Closed |
 | 11 | Tested backup/restore exercise | **Confirmed** as a pre-go-live ops gate (Story 7.6) | Dev/Ops | 🟡 Pre-launch task (not pre-dev) |
+| 12 | Sentry observability timing | **Deferred to post-MVP** — MVP uses a structured error-logging seam (`src/shared/logger.ts`) → Vercel + Railway platform logs | Rasmus | ✅ Closed |
 
 ## Detail & implementation impact
 
@@ -68,6 +69,20 @@ The Fleet Deck token set is now fully locked; no further colour sign-offs outsta
 - Locale/formatting: dates already render in Europe/Stockholm; use Swedish locale (`sv-SE`) for date/number formatting and relative-time strings.
 - Code identifiers, comments, DB column names, audit-event type strings, and developer-facing docs stay in **English** — only human-visible surfaces are Swedish.
 - The GIN search already uses the `simple` tsvector config (Architecture item 18) which suits Swedish names — no stemming change needed.
+
+### 12. Sentry deferred to post-MVP (2026-07-08)
+Sentry is **not** part of the MVP build. Rationale: keep MVP infrastructure lean; error visibility is adequately served by platform logs for a small internal tool.
+- **MVP:** a runtime-neutral **error-logging seam** at `src/shared/logger.ts` (imported by both app and worker per the AR54 kernel rule) writes structured JSON errors and critical alerts to stdout, captured by **Vercel** (app) and **Railway** (worker) platform logs — both EU. It is the single call site for unexpected-error capture (webhooks unknown-ids, DAL unexpected errors, HMAC chain-verify failures, global error boundary).
+- **Post-MVP:** add **Sentry EU (Frankfurt)** behind the same seam (`@sentry/nextjs`, org created EU-from-day-one — region immutable; `instrumentation-client.ts`, `SENTRY_DSN`, Sentry-wrapped `next.config.ts`), with no call-site changes. Add Sentry to the GDPR processor inventory at that point (EU event data, US control-plane metadata).
+- Specs updated: AR5, AR13, AR35, AR52, Story 1.1, Story 1.5, Story 1.7 (renamed "CI/CD pipeline & error-logging seam"), Story 3.1, Story 5.1; architecture project tree and cost envelope (MVP ≈ $50–65/mo, Sentry $0 in MVP).
+
+## Environment / infrastructure setup (not committed — secrets live in `.env.local`, git-ignored)
+
+- **Supabase project created** (2026-07-08): project ref `lupjrbrqgacgmcbuzdsc`, project URL `https://lupjrbrqgacgmcbuzdsc.supabase.co`.
+  - The **direct connection** string (port 5432, migrations/`DIRECT_URL`) was provided and stored in `.env.local` (git-ignored). **Do not commit credentials.**
+  - **TODO at Story 1.1:** copy the exact **transaction-pooler** URL (port 6543 → `DATABASE_URL`) and **session-pooler** URL (→ `DATABASE_SESSION_URL`) from the Supabase dashboard "Connect" panel; fetch `SUPABASE_SECRET_KEY` and `NEXT_PUBLIC_SUPABASE_URL` there too; generate `ACCEPTANCE_HMAC_KEY`.
+  - ⚠️ **Verify the project region is EU (eu-north-1 Stockholm)** — hard GDPR requirement (NFR9), immutable after creation. If it was created in a non-EU region, recreate before storing any data.
+  - ⚠️ **Security:** the DB password was shared in plaintext chat; recommend resetting it (Supabase → Settings → Database → Reset database password) while the DB is empty, then update `.env.local`.
 
 ## Remaining pre-launch (non-blocking for development)
 - **#11 Backup/restore drill** — execute the tested DB + storage restore exercise per Story 7.6 before go-live. *(Only remaining pre-launch item.)*

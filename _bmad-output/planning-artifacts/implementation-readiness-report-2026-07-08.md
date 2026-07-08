@@ -276,7 +276,7 @@ The original gate list (all now closed) was declared in the specs as AR56 launch
 
 ### Recommended Next Steps
 
-1. **Begin implementation at Epic 1, Story 1.1** (scaffold + EU-pinned infra). Create the Supabase project in `eu-north-1` and the Sentry EU org first — both regions are immutable at creation.
+1. **Begin implementation at Epic 1, Story 1.1** (scaffold + EU-pinned infra). Create the Supabase project in `eu-north-1` (Stockholm) first — the region is immutable at creation. *(Sentry is deferred to post-MVP per the 2026-07-08 decision; MVP error observability is the `src/shared/logger.ts` seam → Vercel + Railway platform logs.)*
 2. **Kick off the long-lead human/legal gates now, in parallel** with Epic 1 build: send consent text to legal, request the brand webfont license, get the SMS-cap amounts and the US-processor legal confirmation. These have external turnaround time and gate launch, not code.
 3. **Resolve the UI copy-language decision (English vs Swedish)** before writing user-facing copy in Epic 3 (consent cards) and Epic 5 (message templates) — it is currently unresolved and touches many stories.
 4. **Proceed through MVP epics in order (1→7)** using the sprint plan; run the story-level dev workflow per story.
