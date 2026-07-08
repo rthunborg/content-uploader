@@ -15,7 +15,7 @@ The three plain-language consent cards presented to every ambassador on first lo
 
 **This document is the source of truth for the consent text.** Any change to card wording or the underlying legal text is a new terms version and triggers the re-accept flow on next login (FR8).
 
-**Language:** all user-facing copy is **Swedish** (launch decision 2026-07-08). The Swedish cards below are the production text rendered verbatim by the ConsentCardStack (Story 3.2). The English text is retained as the legally-approved reference — the Swedish conveys the same approved meaning; legal to confirm the Swedish wording before launch (content unchanged, language surface only).
+**Language:** all user-facing copy is **Swedish** (launch decision 2026-07-08). The Swedish cards below are the production text rendered verbatim by the ConsentCardStack (Story 3.2). The English text is retained as the legally-approved reference. **Legal has confirmed the Swedish wording matches the approved meaning (2026-07-08)** — both language surfaces are approved.
 
 ## Production text (Swedish — rendered in the UI)
 
@@ -58,4 +58,4 @@ You can delete your own uploads at any time. If you leave the ambassador program
 - [x] Delegated bystander consent defensible under GDPR (Card 2)
 - [x] Erasure and withdrawal language consistent with Art. 17 obligations (Card 3)
 - [x] Full legal text drafted and linked from each card
-- [ ] Confirm Swedish plain-language wording matches the approved English meaning (pre-launch, content-neutral)
+- [x] Confirm Swedish plain-language wording matches the approved English meaning (confirmed by legal 2026-07-08)

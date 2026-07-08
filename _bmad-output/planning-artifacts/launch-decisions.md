@@ -70,5 +70,5 @@ The Fleet Deck token set is now fully locked; no further colour sign-offs outsta
 - The GIN search already uses the `simple` tsvector config (Architecture item 18) which suits Swedish names — no stemming change needed.
 
 ## Remaining pre-launch (non-blocking for development)
-- **#11 Backup/restore drill** — execute the tested DB + storage restore exercise per Story 7.6 before go-live.
-- **Legal confirmation of the Swedish consent wording** — legal approved the consent *content*; a quick confirmation that the Swedish plain-language cards convey the approved meaning is prudent before launch (the meaning is unchanged; only the language surface differs).
+- **#11 Backup/restore drill** — execute the tested DB + storage restore exercise per Story 7.6 before go-live. *(Only remaining pre-launch item.)*
+- ~~Legal confirmation of the Swedish consent wording~~ — **DONE 2026-07-08:** legal confirmed the Swedish plain-language cards convey the approved meaning; both language surfaces are approved.
