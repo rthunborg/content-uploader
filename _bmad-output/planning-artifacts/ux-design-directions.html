@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stena Content Portal — Design Directions</title>
+<style>
+  :root{
+    --blue:#034592; --red:#e41f1f; --link:#3344dd; --lblue:#cbe1f6;
+    --pink:#fbd4cd; --beige:#eae3d2; --black:#1a1a1a; --white:#ffffff;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--black); background:#fafaf9; line-height:1.5;
+  }
+  .wrap{max-width:1280px; margin:0 auto; padding:32px 24px 80px;}
+  header.page h1{font-size:26px; margin-bottom:4px;}
+  header.page p{color:#555; max-width:70ch;}
+  .note{background:var(--lblue); border-radius:8px; padding:10px 14px; font-size:13px; margin-top:12px; max-width:80ch;}
+
+  nav.tabs{position:sticky; top:0; z-index:50; background:#fafaf9; padding:16px 0 12px; display:flex; flex-wrap:wrap; gap:8px; border-bottom:1px solid #e4e2dd; margin-bottom:28px;}
+  nav.tabs button{
+    font:inherit; font-size:13.5px; font-weight:600; cursor:pointer;
+    border:1px solid #d8d5ce; background:#fff; color:var(--black);
+    padding:7px 14px; border-radius:999px;
+  }
+  nav.tabs button.on{background:var(--blue); border-color:var(--blue); color:#fff;}
+
+  section.direction{display:none; margin-bottom:56px;}
+  section.direction.show{display:block;}
+  body.all section.direction{display:block;}
+
+  .dir-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:4px;}
+  .dir-head h2{font-size:21px;}
+  .dir-head .tag{font-size:13px; color:#666;}
+  .dir-desc{max-width:88ch; font-size:14.5px; color:#333; margin-bottom:6px;}
+  .dir-best{font-size:13.5px; color:#555; margin-bottom:18px;}
+  .dir-best b{color:var(--black);}
+
+  .mocks{display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap;}
+  .mock-slot.phone-slot{flex:0 0 320px;}
+  .mock-slot.desk-slot{flex:1 1 620px; min-width:560px;}
+  .frame-label{font-size:12px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;}
+
+  /* ---------- PHONE FRAME ---------- */
+  .phone{
+    width:320px; border-radius:28px; overflow:hidden; background:var(--bg);
+    border:1px solid #ddd; box-shadow:0 8px 28px rgba(26,26,26,.10);
+    color:var(--text); font-size:14px;
+  }
+  .p-status{display:flex; justify-content:space-between; padding:8px 18px 0; font-size:11px; color:var(--muted); background:var(--chrome);}
+  .p-appbar{display:flex; justify-content:space-between; align-items:center; padding:10px 16px 12px; background:var(--chrome); color:var(--chrome-text); border-bottom:1px solid var(--chrome-bd);}
+  .logo{font-size:14px; font-weight:700; letter-spacing:.01em;}
+  .logo em{font-style:normal; font-weight:400; opacity:.85;}
+  .avatar{width:26px; height:26px; border-radius:50%; background:var(--blue); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .d6 .p-appbar .avatar,.d6 .d-appbar .avatar{background:#fff; color:var(--blue);}
+  .p-body{padding:16px; display:flex; flex-direction:column; gap:12px; min-height:360px;}
+  .p-title{font-size:18px; font-weight:700;}
+  .card{background:var(--card); border:1px solid var(--card-bd); border-radius:var(--radius); padding:14px;}
+  .badge{display:inline-block; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--badge-bg); color:var(--badge-text); margin-bottom:6px;}
+  .t-title{font-weight:600; font-size:15px;}
+  .t-meta{font-size:12.5px; color:var(--muted); margin:2px 0 10px;}
+  .card.done .t-meta{margin-bottom:0;}
+  .btn{display:inline-block; text-align:center; font-weight:600; font-size:14px; padding:10px 16px; border-radius:calc(var(--radius) - 2px); cursor:default;}
+  .btn.primary{background:var(--btn); color:var(--btn-text); width:100%;}
+  .upload-strip{background:var(--strip-bg); border-radius:var(--radius); padding:10px 12px; font-size:12.5px; color:var(--strip-text);}
+  .progress{height:4px; border-radius:2px; background:rgba(26,26,26,.12); margin-top:8px; overflow:hidden;}
+  .d3 .progress{background:rgba(255,255,255,.18);}
+  .progress i{display:block; height:100%; width:26%; background:var(--btn);}
+  .p-nav{display:flex; justify-content:space-around; padding:10px 6px 14px; background:var(--nav); border-top:1px solid var(--chrome-bd); font-size:11px; color:var(--muted);}
+  .p-nav span.active{color:var(--nav-active); font-weight:700;}
+
+  /* ---------- DESKTOP FRAME ---------- */
+  .desk{
+    width:100%; border-radius:12px; overflow:hidden; background:var(--bg);
+    border:1px solid #ddd; box-shadow:0 8px 28px rgba(26,26,26,.10);
+    color:var(--text); font-size:13px;
+  }
+  .d-appbar{display:flex; align-items:center; gap:16px; padding:10px 16px; background:var(--chrome); color:var(--chrome-text); border-bottom:1px solid var(--chrome-bd);}
+  .search{flex:1; max-width:340px; font-size:12.5px; color:var(--muted); background:var(--search-bg); border:1px solid var(--card-bd); border-radius:6px; padding:6px 10px;}
+  .d6 .search{background:rgba(255,255,255,.15); color:rgba(255,255,255,.8); border-color:transparent;}
+  .d-body{display:flex; min-height:380px;}
+  .d-rail{flex:0 0 208px; background:var(--rail); border-right:1px solid var(--chrome-bd); padding:12px 8px; display:flex; flex-direction:column; gap:2px;}
+  .r-item{padding:7px 10px; border-radius:6px; font-size:12.5px; color:var(--text); display:flex; justify-content:space-between; align-items:center;}
+  .r-item.selected{background:var(--sel-bg); color:var(--sel-text); font-weight:700;}
+  .r-item .count{font-size:11px; background:var(--badge-bg); color:var(--badge-text); border-radius:999px; padding:1px 7px;}
+  .r-sec{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding:12px 10px 4px;}
+  .d-main{flex:1; padding:16px; background:var(--stage); color:var(--stage-text);}
+  .hero{display:flex; justify-content:space-between; align-items:center; gap:16px; background:var(--card); border:1px solid var(--card-bd); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; color:var(--text);}
+  .d3 .hero,.d4 .hero{color:var(--stage-text);}
+  .d4 .hero{background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.12);}
+  .hero b{font-size:15px; display:block;}
+  .hero-sub{font-size:12px; color:var(--muted);}
+  .d4 .hero-sub{color:rgba(255,255,255,.65);}
+  .hero .btn.primary{width:auto; font-size:13px; padding:8px 14px;}
+  .grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
+  .thumb{position:relative; aspect-ratio:1/1; border-radius:6px; overflow:hidden; display:flex; align-items:flex-end;}
+  .thumb .scrim{width:100%; padding:5px 7px; font-size:10px; color:#fff; background:linear-gradient(transparent,rgba(26,26,26,.65));}
+  .thumb .star{position:absolute; top:6px; right:6px; font-size:13px; color:#fff; background:var(--star-bg); width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center;}
+  .thumb .chip{position:absolute; top:6px; left:6px; font-size:9px; font-weight:600; background:rgba(255,255,255,.92); color:var(--black); border-radius:999px; padding:2px 7px;}
+  .thumb .play{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:30px; height:30px; border-radius:50%; background:rgba(26,26,26,.55); color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center;}
+  .thumb.processing{background:var(--proc-bg); color:var(--proc-text); align-items:center; justify-content:center; font-size:11px; font-weight:600; border:1px dashed var(--proc-bd);}
+
+  /* ================= THEMES ================= */
+  section.direction{
+    --bg:var(--white); --text:var(--black); --muted:#6b6b6b;
+    --chrome:var(--white); --chrome-text:var(--black); --chrome-bd:#e7e4de;
+    --card:var(--beige); --card-bd:transparent;
+    --rail:var(--white); --sel-bg:var(--lblue); --sel-text:var(--black);
+    --btn:var(--blue); --btn-text:#fff;
+    --badge-bg:var(--lblue); --badge-text:var(--black);
+    --radius:8px; --stage:transparent; --stage-text:var(--text);
+    --nav:var(--white); --nav-active:var(--blue);
+    --strip-bg:var(--lblue); --strip-text:var(--black);
+    --search-bg:#fff; --star-bg:var(--blue);
+    --proc-bg:var(--lblue); --proc-text:var(--black); --proc-bd:rgba(3,69,146,.35);
+  }
+  /* D2 Gallery White */
+  section.direction.d2{--card:var(--white); --card-bd:#e7e4de; --radius:6px; --sel-bg:rgba(26,26,26,.06); --sel-text:var(--black); --strip-bg:#fff; --strip-text:var(--black);}
+  .d2 .upload-strip{border:1px solid #e7e4de;}
+  /* D3 Dark Cockpit */
+  section.direction.d3{--bg:var(--black); --text:#fff; --muted:rgba(255,255,255,.62);
+      --chrome:var(--black); --chrome-text:#fff; --chrome-bd:rgba(255,255,255,.12);
+      --card:rgba(255,255,255,.07); --card-bd:rgba(255,255,255,.10);
+      --rail:rgba(255,255,255,.03); --sel-bg:var(--link); --sel-text:#fff;
+      --btn:var(--link); --btn-text:#fff;
+      --badge-bg:rgba(203,225,246,.2); --badge-text:#fff;
+      --nav:var(--black); --nav-active:#fff;
+      --strip-bg:rgba(203,225,246,.14); --strip-text:#fff;
+      --search-bg:rgba(255,255,255,.06);
+      --proc-bg:rgba(203,225,246,.12); --proc-text:rgba(255,255,255,.8); --proc-bd:rgba(203,225,246,.4);}
+  /* D4 Hybrid Stage */
+  section.direction.d4{--stage:var(--black); --stage-text:#fff;
+      --proc-bg:rgba(203,225,246,.14); --proc-text:rgba(255,255,255,.85); --proc-bd:rgba(203,225,246,.4);}
+  /* D5 Card Deck */
+  section.direction.d5{--bg:var(--beige); --chrome:var(--beige); --chrome-bd:rgba(26,26,26,.08);
+      --card:var(--white); --card-bd:transparent; --rail:var(--beige);
+      --radius:16px; --nav:var(--beige); --strip-bg:var(--white); --search-bg:#fff;}
+  .d5 .card,.d5 .hero{box-shadow:0 2px 10px rgba(26,26,26,.07);}
+  /* D6 Brand Bold */
+  section.direction.d6{--chrome:var(--blue); --chrome-text:#fff; --chrome-bd:rgba(3,69,146,.25);
+      --card:var(--white); --card-bd:#e2ded6;
+      --sel-bg:var(--blue); --sel-text:#fff;
+      --badge-bg:var(--red); --badge-text:#fff;
+      --nav:var(--blue); --nav-active:#fff;}
+  .d6 .p-status{color:rgba(255,255,255,.85);}
+  .d6 .p-nav{color:rgba(255,255,255,.7);}
+
+  /* compare table */
+  .compare{margin-top:8px; overflow-x:auto;}
+  .compare table{border-collapse:collapse; font-size:13px; min-width:760px;}
+  .compare th,.compare td{border:1px solid #e0ddd6; padding:8px 12px; text-align:left; vertical-align:top;}
+  .compare th{background:var(--beige); font-size:12px;}
+  .compare td b{color:var(--blue);}
+  h2.sec{font-size:20px; margin:40px 0 12px;}
+  .criteria{columns:2; gap:32px; font-size:14px; max-width:900px;}
+  .criteria li{margin:0 0 8px 18px;}
+  @media (max-width:720px){.criteria{columns:1;} .mock-slot.desk-slot{min-width:0;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>Stena Content Portal — Design Directions</h1>
+  <p>Six directions using only the Stena Line palette. Each shows the same two screens — the ambassador task list (phone) and the admin library (desktop) — so differences come purely from layout, chrome weight, and color application.</p>
+  <div class="note">Typeface shown is a placeholder system font (brand typeface pending). Light Blue and Pink appear only because this is an internal tool. Green and Yellow are excluded per brand restrictions.</div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-d="d1" class="on">1 · Fleet Deck</button>
+  <button data-d="d2">2 · Gallery White</button>
+  <button data-d="d3">3 · Dark Cockpit</button>
+  <button data-d="d4">4 · Hybrid Stage</button>
+  <button data-d="d5">5 · Card Deck</button>
+  <button data-d="d6">6 · Brand Bold</button>
+  <button data-d="all">Show all</button>
+</nav>
+
+<section class="direction d1 show" id="d1">
+  <div class="dir-head"><h2>1 · Fleet Deck</h2><span class="tag">warm · branded · calm</span></div>
+  <p class="dir-desc">White base with beige panels exactly as the brand guide prescribes ("text box colour"). Blue carries every action; light blue marks selection and new items. The most literal translation of Stena's print identity into an app.</p>
+  <p class="dir-best"><b>Choose this if:</b> you want the friendliest, most unmistakably-Stena default with soft visual grouping.</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop</div></div>
+  </div>
+</section>
+
+<section class="direction d2" id="d2">
+  <div class="dir-head"><h2>2 · Gallery White</h2><span class="tag">minimal · hairline · media-max</span></div>
+  <p class="dir-desc">Chrome all but disappears: white everywhere, hairline borders instead of filled panels, color reserved exclusively for actions and states. The interface recedes so thumbnails and previews dominate every screen.</p>
+  <p class="dir-best"><b>Choose this if:</b> "media is the hero" should be taken to its logical extreme and the UI should feel like a gallery wall.</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop</div></div>
+  </div>
+</section>
+
+<section class="direction d3" id="d3">
+  <div class="dir-head"><h2>3 · Dark Cockpit</h2><span class="tag">pro tool · Lightroom energy</span></div>
+  <p class="dir-desc">The whole app lives on brand Black with white text (a brand-approved 17.4:1 pairing). Media pops maximally; the brighter link-blue carries actions for contrast on dark. Reads as a professional media tool.</p>
+  <p class="dir-best"><b>Choose this if:</b> the admin experience is the soul of the product and ambassadors should feel like they're using "the studio's tool." Risk: heavier feel for a 90-second consumer moment.</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop</div></div>
+  </div>
+</section>
+
+<section class="direction d4" id="d4">
+  <div class="dir-head"><h2>4 · Hybrid Stage</h2><span class="tag">light app · dark where media is judged</span></div>
+  <p class="dir-desc">Light, warm chrome (white + beige) for navigation, tasks, and management — but the media areas (library grid, triage queue, previews) sit on brand Black like a screening room. Matches the token architecture already defined in the foundation: <code>surface-media</code> only where content is evaluated.</p>
+  <p class="dir-best"><b>Choose this if:</b> you want Fleet Deck's warmth for people-facing screens and Dark Cockpit's media pop exactly where Petra judges content. (Facilitator's recommendation.)</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone (stays light)</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop (dark stage)</div></div>
+  </div>
+</section>
+
+<section class="direction d5" id="d5">
+  <div class="dir-head"><h2>5 · Card Deck</h2><span class="tag">soft · rounded · consumer-warm</span></div>
+  <p class="dir-desc">Inverts Fleet Deck: beige becomes the page itself, white cards float on it with big 16px radii and soft shadows. The friendliest, most consumer-app feel — consent cards and task cards look almost physical.</p>
+  <p class="dir-best"><b>Choose this if:</b> the ambassador experience should feel like a warm consumer app first and foremost. Risk: soft cards eat horizontal space in dense admin views.</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop</div></div>
+  </div>
+</section>
+
+<section class="direction d6" id="d6">
+  <div class="dir-head"><h2>6 · Brand Bold</h2><span class="tag">corporate · blue band · red accents</span></div>
+  <p class="dir-desc">Strongest brand presence: a Core Blue app bar anchors every screen, selected states fill solid blue, and red appears as the attention accent (badges, counts) — closer to how blue and red dominate Stena's marketing.</p>
+  <p class="dir-best"><b>Choose this if:</b> stakeholders want the portal to feel like an official Stena flagship. Trade-off: using red for "new" weakens red's reserved destructive meaning, and heavy chrome competes with media.</p>
+  <div class="mocks">
+    <div class="mock-slot phone-slot"><div class="frame-label">Ambassador · phone</div></div>
+    <div class="mock-slot desk-slot"><div class="frame-label">Admin · desktop</div></div>
+  </div>
+</section>
+
+<h2 class="sec">How to evaluate</h2>
+<ul class="criteria">
+  <li><b>Layout intuitiveness</b> — does the hierarchy put tasks (Jonas) and the triage entry (Petra) unmistakably first?</li>
+  <li><b>Interaction style</b> — which chrome weight best supports one-motion-per-intent?</li>
+  <li><b>Visual weight</b> — which density feels right for a 90-second phone moment vs. a 40-item desktop session?</li>
+  <li><b>Media focus</b> — where do thumbnails pop most without the UI shouting?</li>
+  <li><b>Emotional goals</b> — warm & safe for ambassadors, calm & fast for admins?</li>
+  <li><b>Brand alignment</b> — enough Stena without becoming a marketing page?</li>
+</ul>
+
+<h2 class="sec">At a glance</h2>
+<div class="compare">
+<table>
+  <tr><th>Direction</th><th>Media focus</th><th>Warmth</th><th>Brand presence</th><th>Admin density fit</th><th>Ambassador fit</th><th>Watch out for</th></tr>
+  <tr><td><b>1 Fleet Deck</b></td><td>Good</td><td>High</td><td>Medium</td><td>Good</td><td>Very good</td><td>Beige everywhere can flatten hierarchy</td></tr>
+  <tr><td><b>2 Gallery White</b></td><td>Very high</td><td>Low–medium</td><td>Low</td><td>Very good</td><td>Good</td><td>Can feel clinical; weak brand moment</td></tr>
+  <tr><td><b>3 Dark Cockpit</b></td><td>Maximum</td><td>Low</td><td>Medium</td><td>Excellent</td><td>Risky</td><td>Dark consent/onboarding feels heavy</td></tr>
+  <tr><td><b>4 Hybrid Stage</b></td><td>High where it counts</td><td>High</td><td>Medium</td><td>Excellent</td><td>Very good</td><td>Two surface moods must transition cleanly</td></tr>
+  <tr><td><b>5 Card Deck</b></td><td>Medium</td><td>Maximum</td><td>Medium</td><td>Weak–fair</td><td>Excellent</td><td>Density suffers in library/table views</td></tr>
+  <tr><td><b>6 Brand Bold</b></td><td>Medium</td><td>Medium</td><td>Maximum</td><td>Good</td><td>Good</td><td>Red-as-attention dilutes red-as-danger</td></tr>
+</table>
+</div>
+
+</div><!-- /wrap -->
+
+<template id="tpl-phone">
+  <div class="phone">
+    <div class="p-status"><span>9:41</span><span>5G ▂▄▆</span></div>
+    <div class="p-appbar"><span class="logo">Stena <em>Content Portal</em></span><span class="avatar">J</span></div>
+    <div class="p-body">
+      <div class="p-title">Your tasks</div>
+      <div class="card task new">
+        <span class="badge">New</span>
+        <div class="t-title">Midsummer deck photos</div>
+        <div class="t-meta">From Petra · Summer recruiting · due Friday</div>
+        <div class="btn primary">Add content</div>
+      </div>
+      <div class="card task done">
+        <div class="t-title">Engine room b-roll</div>
+        <div class="t-meta">✓ Completed · 12 files delivered</div>
+      </div>
+      <div class="upload-strip">
+        <div class="us-text">Uploading 3 of 12 — safe to switch apps</div>
+        <div class="progress"><i></i></div>
+      </div>
+    </div>
+    <div class="p-nav"><span class="active">Tasks</span><span>Upload</span><span>My uploads</span><span>Profile</span></div>
+  </div>
+</template>
+
+<template id="tpl-desk">
+  <div class="desk">
+    <div class="d-appbar">
+      <span class="logo">Stena <em>Content Portal</em></span>
+      <span class="search">Search descriptions and tags…</span>
+      <span class="avatar">P</span>
+    </div>
+    <div class="d-body">
+      <aside class="d-rail">
+        <div class="r-item selected"><span>New this week</span><b class="count">40</b></div>
+        <div class="r-item"><span>★ Starred</span></div>
+        <div class="r-item"><span>All assets</span></div>
+        <div class="r-sec">Folders</div>
+        <div class="r-item"><span>▸ campaign-summer-2026</span></div>
+        <div class="r-item"><span>▸ deck-life</span></div>
+        <div class="r-item"><span>▸ port-ops</span></div>
+        <div class="r-sec">Filters</div>
+        <div class="r-item"><span>Ambassador ▾</span></div>
+        <div class="r-item"><span>Type ▾ &nbsp; Date ▾</span></div>
+      </aside>
+      <main class="d-main">
+        <div class="hero">
+          <div><b>New this week: 40</b><span class="hero-sub">Review, tag and star in one pass — T · S · X · space</span></div>
+          <div class="btn primary">Start triage →</div>
+        </div>
+        <div class="grid">
+          <div class="thumb" style="background:linear-gradient(135deg,#9db2c7,#54677e)"><span class="star">★</span><div class="scrim">jonas · today</div></div>
+          <div class="thumb" style="background:linear-gradient(160deg,#b8c4cf,#6e7f92)"><span class="chip">deck-life</span><div class="scrim">maria · today</div></div>
+          <div class="thumb" style="background:linear-gradient(135deg,#7e8ea0,#3d4b5c)"><span class="play">▶</span><div class="scrim">0:47 · erik · yesterday</div></div>
+          <div class="thumb processing">Processing…</div>
+          <div class="thumb" style="background:linear-gradient(150deg,#c5cdd6,#8494a6)"><div class="scrim">sara · yesterday</div></div>
+          <div class="thumb" style="background:linear-gradient(135deg,#8fa2b5,#4a5a6e)"><span class="star">★</span><span class="chip">campaign-summer-2026</span><div class="scrim">jonas · mon</div></div>
+          <div class="thumb" style="background:linear-gradient(140deg,#aebbc9,#5d6d80)"><span class="play">▶</span><div class="scrim">1:12 · lena · mon</div></div>
+          <div class="thumb" style="background:linear-gradient(135deg,#99a9ba,#526176)"><div class="scrim">amir · mon</div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+</template>
+
+<script>
+  const phoneTpl = document.getElementById('tpl-phone');
+  const deskTpl  = document.getElementById('tpl-desk');
+  document.querySelectorAll('.phone-slot').forEach(s => s.appendChild(phoneTpl.content.cloneNode(true)));
+  document.querySelectorAll('.desk-slot').forEach(s => s.appendChild(deskTpl.content.cloneNode(true)));
+
+  const tabs = document.querySelectorAll('#tabs button');
+  tabs.forEach(btn => btn.addEventListener('click', () => {
+    tabs.forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    const d = btn.dataset.d;
+    document.body.classList.toggle('all', d === 'all');
+    document.querySelectorAll('section.direction').forEach(sec =>
+      sec.classList.toggle('show', d !== 'all' && sec.id === d));
+    if (d !== 'all') document.getElementById(d)?.scrollIntoView({behavior:'smooth', block:'start'});
+  }));
+</script>
+</body>
+</html>
