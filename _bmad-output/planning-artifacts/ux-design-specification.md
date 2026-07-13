@@ -2,10 +2,12 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 lastStep: 14
 completedAt: '2026-07-07'
-lastEdited: '2026-07-07'
+lastEdited: '2026-07-12'
 editHistory:
   - date: '2026-07-07'
     changes: 'Adversarial review remediation (18 findings): aligned MVP vs v1.1 deep-link claims; replaced walk-away with interruption-safe upload model (iOS Safari background constraint); precise tap/typing KPIs; triage queue membership rules + dismiss undo + space=play/pause; spontaneous upload flow A2; ambassador consent withdrawal (Flow 5b); session revocation requirements; re-accept gate in Flow 2; MVP-honest completion copy; Core Blue disambiguation rules; admin compose/send Flow 6; async export with size estimate; fixed duplicate section numbering; type scale marked provisional; deletion semantics enumerated'
+  - date: '2026-07-12'
+    changes: 'Applied the approved Sprint Change Proposal 2026-07-10: replaced the legacy freeform taxonomy with curated themes; applied ThemePicker active/archived lifecycle behavior and permissioned inline creation; updated SelectionBar, left-rail filtering, triage, browse, and bystander-erasure terminology; preserved the ambassador surface and kept campaign/calendar UI out of MVP.'
 workflowType: 'ux-design'
 classification:
   projectType: web_app
@@ -36,7 +38,7 @@ inputDocuments:
 
 ### Project Vision
 
-The Stena Content Portal is one web app with two deliberately different faces. For 10–20 employee ambassadors, it is a phone-first drop zone that fits a 90-second downtime moment: a task notification arrives, the camera roll opens, twelve photos upload in the background, done. For the small HR/marketing admin team, it is a desktop-first cockpit: an inbox-style triage queue, one shared library with filters and tags-as-folders, and a zip export with human-readable filenames — from "need content" to publish-ready asset in under 10 minutes. The UX thesis matches the product thesis: contribution must cost almost nothing, and curation must feel like one continuous motion rather than page-hopping.
+The Stena Content Portal is one web app with two deliberately different faces. For 10–20 employee ambassadors, it is a phone-first drop zone that fits a 90-second downtime moment: a task notification arrives, the camera roll opens, twelve photos upload in the background, done. For the small HR/marketing admin team, it is a desktop-first cockpit: an inbox-style triage queue, one shared library with filters and curated theme browse views, and a zip export with human-readable filenames — from "need content" to publish-ready asset in under 10 minutes. The UX thesis matches the product thesis: contribution must cost almost nothing, and curation must feel like one continuous motion rather than page-hopping.
 
 ### Target Users
 
@@ -47,7 +49,7 @@ The Stena Content Portal is one web app with two deliberately different faces. F
 ### Key Design Challenges
 
 1. **The 90-second contribution moment.** Task link → signed in and at the point of action in < 3 s on 4G (MVP: the task list with the new task one tap from upload; v1.1 tokenized links land directly in the upload flow), batch selection without per-file forms, chunked auto-resume that makes network drops lossless, and client-side size validation that explains limits *before* pain. The upload experience is the product's make-or-break subsystem, and every state (queued, uploading, paused, processing, done) must read as "nothing you do can lose this."
-2. **Triage at conveyor-belt speed.** An inbox-style queue where tag/star/skip is one motion per item — keyboard-driven on desktop (which doubles as the accessibility story), with pre-generated thumbnails rendering < 200 ms and graceful "processing" placeholders for fresh uploads.
+2. **Triage at conveyor-belt speed.** An inbox-style queue where theme assignment/star/skip is one motion per item — keyboard-driven on desktop (which doubles as the accessibility story), with pre-generated thumbnails rendering < 200 ms and graceful "processing" placeholders for fresh uploads.
 3. **Consent as comprehension, not friction.** Three plain-language cards on first login (and on every terms change) that feel warm rather than legal, a decline path that reads as "paused, come back anytime" instead of a dead end, and self-service re-entry — all while producing evidence-grade acceptance records.
 4. **One app, two optimized surfaces.** Phone-first ambassador flows and desktop-first admin flows must share one design system and one asset model without either experience feeling like the other's afterthought.
 5. **Signal separation by design.** Stars and dismissals are admin-private; ambassadors only ever see positive signals. The UI must make it structurally impossible for triage signals to leak into ambassador-visible surfaces.
@@ -59,7 +61,7 @@ The Stena Content Portal is one web app with two deliberately different faces. F
 2. **The usage notification as the delight moment.** "Your photo was used in a published campaign!" is near-zero build cost with outsized retention impact — worth designing as a genuine micro-celebration, not a system toast.
 3. **Consent cards as a brand moment.** First login is the program's handshake; three tappable cards done well set a tone of respect and control that a scrolled-past text wall never could.
 4. **Triage keystrokes as power UX.** A photo-culling interaction model (J/K/S-style) turns Petra's worst chore into the tool's most-loved feature, and satisfies keyboard operability (WCAG) for free.
-5. **Tags-as-folders: one primitive, familiar mental model.** Admins get the folder browsing they asked for with none of the sync machinery — the UX can lean fully on the folder metaphor while the model stays simple.
+5. **Curated themes: one explicit grouping axis.** Admins assign assets to managed themes, filter by theme, and open theme browse views for connected uploads. The UX keeps organization intentional and consistent without introducing another freeform taxonomy.
 
 ## Core User Experience
 
@@ -67,7 +69,7 @@ The Stena Content Portal is one web app with two deliberately different faces. F
 
 **The 90-second fulfillment** is the interaction that defines this product: a task notification arrives by SMS or email, Jonas taps through and is signed in and looking at the request within 3 seconds — one tap from the upload flow in MVP, directly in it once v1.1 tokenized links arrive — batch-selects from his camera roll in one gesture, and lets the upload run while he gets on with his day. No login form, no per-file metadata, no supervising a progress bar. If this loop feels effortless, the library fills and everything downstream works; if it costs more than 90 seconds of attention, the product fails regardless of how good the admin side is.
 
-Its mirror on the admin side is **the triage rip**: Petra enters the "new this week" queue and processes 40 uploads in one sitting — preview, tag, star or skip, next — one motion per item, keyboard-driven, without ever leaving the queue. Contribution and curation are the product's two heartbeats; every other screen exists to serve one of them.
+Its mirror on the admin side is **the triage rip**: Petra enters the "new this week" queue and processes 40 uploads in one sitting — preview, assign a theme, star or skip, next — one motion per item, keyboard-driven, without ever leaving the queue. Contribution and curation are the product's two heartbeats; every other screen exists to serve one of them.
 
 ### Platform Strategy
 
@@ -83,8 +85,8 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 - **Batch upload** — select many, tap once; metadata (task linkage, ambassador, date) is created by the workflow, not typed into forms; descriptions are optional and can come later.
 - **Surviving bad connectivity** — drops and retries are invisible; the ambassador never sees an error for something the system can heal itself.
 - **Being told "no" early** — size/type validation happens before the upload starts, stating the limit and the remedy ("Videos can be up to 2 GB / ~5 min — trim the clip and try again").
-- **Triage verbs** — tag, star, skip as single keystrokes/taps in the queue; no per-item page loads, no confirmation dialogs for reversible actions.
-- **Finding anything** — filters (ambassador, type, date, tag-folder) and search respond in < 500 ms; tags browse as folders, matching the mental model admins already have.
+- **Triage verbs** — assign theme, star, skip as single keystrokes/taps in the queue; no per-item page loads, no confirmation dialogs for reversible actions.
+- **Finding anything** — filters (ambassador, type, date, theme) and upload-description search respond in < 500 ms; themes open as browse views of their connected uploads.
 - **Previews** — thumbnails just appear (< 200 ms in viewport); fresh uploads show a calm "processing" state, never a broken image.
 - **Export naming** — the zip arrives with `{ambassador-name}-{upload-date}-{nn}` filenames automatically; nobody ever renames `IMG_4417.MOV` again.
 
@@ -93,7 +95,7 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 1. **The first-login handshake.** Invite email → three consent cards → active account, in under a minute. This is where trust is established — and where a confusing legal wall would kill activation before the first upload.
 2. **The first interrupted upload that heals itself.** Jonas gets pulled away mid-transfer on ship Wi-Fi and comes back to find the upload resuming exactly where it left off — no error, no lost progress. The moment he learns nothing he does can break it is the moment contribution becomes habitual.
 3. **"Your photo was used!"** The usage notification is the retention moment — proof that contributions don't vanish into a silent hole. Designed as a micro-celebration, not a system toast.
-4. **The Monday triage session.** Petra clears 40 uploads in one sitting and feels *faster* than her old workflow for the first time. If the queue feels like a chore, the library rots untagged.
+4. **The Monday triage session.** Petra clears 40 uploads in one sitting and feels *faster* than her old workflow for the first time. If the queue feels like a chore, the library remains unreviewed and poorly organized.
 5. **The zip handoff.** The export opens with human-readable filenames, publish-ready. This is where the "under 10 minutes" promise lands and the tool proves itself to the agency and stakeholders.
 6. **Failure moments that must not ruin trust:** an expired magic link (one tap to a fresh one), an oversized video (limit explained before upload), a declined consent (warm "come back anytime"), a budget cap hit (plain words, named action). Each of these is a designed experience, not an error state.
 
@@ -146,7 +148,7 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 - **Trust → honest state.** Upload progress reflects reality (chunks, retries absorbed silently); "processing" placeholders promise and deliver; no optimistic UI that can betray.
 - **Feeling chosen → personal touch at entry.** Invitation and task notifications name the sender and the purpose ("Petra needs Midsummer deck photos"), not "You have a new task (1)."
 - **Pride → designed celebration.** The usage notification gets celebratory visual language and specific context ("your photo — used in the summer recruiting campaign"), plus the ticking profile counter. Small, genuine, never cheesy.
-- **Safety → reversibility where possible, clarity where not.** Triage verbs toggle freely (star/unstar, tag/untag); the few irreversible acts (delete) state consequences plainly and specifically.
+- **Safety → reversibility where possible, clarity where not.** Triage verbs toggle freely (star/unstar, assign/remove theme); the few irreversible acts (delete) state consequences plainly and specifically.
 - **Flow → zero interruptions in the queue.** No modals, no page loads, no confirmation prompts for reversible actions during triage; keyboard advances automatically to the next item.
 - **Warmth in failure → soft-edge copy pattern.** Every error names what happened, why, and the remedy, in the same friendly register as the rest of the app ("This link has expired — tap here and we'll send a fresh one").
 - **Calm in governance → procedural framing.** Deletion and offboarding flows are structured as steps with confirmation summaries — the UI equivalent of the runbook Petra already trusts.
@@ -180,12 +182,12 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 **Navigation & entry:**
 - **Deep-landing notifications** (BeReal): task link → upload screen directly; login resolves invisibly in between.
 - **Single-purpose mobile surface** (WhatsApp): the ambassador app is a short stack — tasks, upload, my uploads, profile — with the primary action always thumb-reachable.
-- **Folders-as-views** (Google Drive familiarity): tags browse like folders, satisfying the mental model without a second taxonomy.
+- **Theme browse views:** curated themes provide a direct route to all connected uploads without introducing a second taxonomy.
 
 **Interaction:**
 - **Gallery-grid multi-select** (Instagram): tap-to-toggle selection with counters, then one confirm — the exact camera-roll gesture Jonas knows.
 - **Quiet background progress** (Google Photos): persistent but unobtrusive upload status; state survives navigation away and back.
-- **Keystroke triage with auto-advance** (Superhuman/Lightroom): tag, star, skip on keys; the queue advances itself; a running "12 of 40" counter feeds momentum.
+- **Keystroke triage with auto-advance** (Superhuman/Lightroom): assign theme, star, skip on keys; the queue advances itself; a running "12 of 40" counter feeds momentum.
 - **Hover-scrub video previews** (Frame.io): evaluate a clip without opening it.
 
 **Visual:**
@@ -195,7 +197,7 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 
 ### Anti-Patterns to Avoid
 
-- **The metadata tollbooth** (enterprise DAM/CMS uploads): required per-file titles, categories, and rights fields before upload starts. This kills the 90-second moment; metadata comes from workflow context or later admin tagging, never from Jonas's thumbs.
+- **The metadata tollbooth** (enterprise DAM/CMS uploads): required per-file titles, categories, and rights fields before upload starts. This kills the 90-second moment; metadata comes from workflow context or later admin theme assignment, never from Jonas's thumbs.
 - **The EULA wall** (every consent flow users hate): a scrolled-past legal text with one "I agree" checkbox. The three-card pattern exists precisely to avoid this; never collapse it back into a wall.
 - **Supervised uploads** (old file managers): progress modals that block navigation, "don't close this window" warnings, and failures that discard completed work. Chunked resume makes all of this unnecessary — the UI must act like it.
 - **Guilt mechanics** (Duolingo's dark side): streak-shaming, "you haven't uploaded in a while" nudges, public rankings of laggards. The leaderboard (v1.1) shows only the top 5 — never who's last — and task reminders stay factual, not emotional.
@@ -228,7 +230,7 @@ Its mirror on the admin side is **the triage rip**: Petra enters the "new this w
 
 - **Design tokens first:** a single token file (colors, typography scale, spacing, radii, shadows, motion durations) consumed by both surfaces. **Color and typography tokens are sourced exclusively from Stena's official brand guidelines** (requested from stakeholder — pending): brand colors mapped into semantic roles (primary action, positive/celebration, caution, destructive, neutral chrome), brand fonts as the only typefaces. Until the guidelines arrive, all visual work uses a clearly-marked placeholder neutral palette and system font stack so nothing placeholder can be mistaken for final.
 - **Primitive layer:** headless components themed once with the tokens — button, input, dialog, dropdown, toast, tabs, badge, checkbox, progress.
-- **Custom component layer** (the real design work, specified later in this document): TriageCard + queue shell, UploadManager (batch progress, retry states), GalleryGrid (selection model, lazy thumbnails), ConsentCard stack, MediaPreview (image/video with processing state), TagPicker (create + assign in one control), NotificationCelebration.
+- **Custom component layer** (the real design work, specified later in this document): TriageCard + queue shell, UploadManager (batch progress, retry states), GalleryGrid (selection model, lazy thumbnails), ConsentCard stack, MediaPreview (image/video with processing state), ThemePicker (create + assign in one control), NotificationCelebration.
 - **Density modes:** default comfortable density on the ambassador surface (touch targets ≥ 44 px), compact density on admin data surfaces — same tokens, one spacing multiplier.
 
 ### Customization Strategy
@@ -248,7 +250,7 @@ The supporting-actor experience on the admin side is **the triage rip** (clear 4
 
 ### User Mental Model
 
-- **Jonas's model is messaging, not filing.** Today he already fulfills content requests — in a chat thread: someone asks, he opens the gallery, multi-selects, sends. The portal must map 1:1 onto that gesture. Anything that smells like "uploading to a system" (forms, folders, required fields) breaks the model; anything that feels like "replying with photos" fits it.
+- **Jonas's model is messaging, not filing.** Today he already fulfills content requests — in a chat thread: someone asks, he opens the gallery, multi-selects, sends. The portal must map 1:1 onto that gesture. Anything that smells like "uploading to a system" (forms, filing hierarchies, required fields) breaks the model; anything that feels like "replying with photos" fits it.
 - **What he hates about the current way:** no idea if the files arrived, whether they were usable, or whether anyone cared; big videos fail in chat apps; and a nagging uncertainty about what the company may do with his material. The portal wins by answering all three: honest upload state, proof of use, explicit consent he controls.
 - **His expectations:** the link in the message takes him *to the thing* (not a homepage); selection looks like his native gallery; progress doesn't hold him hostage; done means done.
 - **Likely confusion points to design against:** logging in when his session has expired (must be one tap to request a link, and the email must arrive fast); the difference between "uploaded" and "processing" (he should never care — uploaded is done, processing is the admin's concern); whether marking the task done is required (it isn't — but it's one satisfying tap, offered right after upload).
@@ -285,9 +287,9 @@ The two places we combine familiar patterns in a mildly novel way:
 **B. The triage rip (admin, desktop)**
 
 1. **Initiation.** Library home shows "New this week: 40" as the primary card. Click → full-screen triage queue, first item loaded, keyboard legend visible until first use.
-2. **Interaction.** One asset at a time, large preview (hover-scrub for video), context line (ambassador, task, date, size). Verbs on single keys: **T** tag (type-ahead picker, Enter assigns), **S** star, **→/space** next, **←** back, **X** dismiss from queue. Mouse equivalents on-screen for non-keyboard admins. All verbs reversible; none confirm.
-3. **Feedback.** Instant visual acknowledgment per verb (star fills, tag chip appears), auto-advance on next/dismiss, progress "12 of 40" with a thin bar. Items still transcoding show the designed processing placeholder — star/tag still work; only playback waits.
-4. **Completion.** "Queue clear — 40 reviewed, 9 starred, 31 tagged" with two exits: **Go to starred** (the campaign path) or **Back to library**. The empty queue is a designed moment — Monday's pile is gone and it shows.
+2. **Interaction.** One asset at a time, large preview (hover-scrub for video), context line (ambassador, task, date, size). Verbs on single keys: **T** theme (type-ahead ThemePicker, Enter assigns), **S** star, **→/space** next, **←** back, **X** dismiss from queue. Mouse equivalents on-screen for non-keyboard admins. All verbs reversible; none confirm.
+3. **Feedback.** Instant visual acknowledgment per verb (star fills, theme selection appears), auto-advance on next/dismiss, progress "12 of 40" with a thin bar. Items still transcoding show the designed processing placeholder — star/theme assignment still work; only playback waits.
+4. **Completion.** "Queue clear — 40 reviewed, 9 starred, 31 assigned to themes" with two exits: **Go to starred** (the campaign path) or **Back to library**. The empty queue is a designed moment — Monday's pile is gone and it shows.
 
 ## Visual Design Foundation
 
@@ -457,28 +459,28 @@ flowchart TD
     A[Library home - New this week: 40] --> B[Start triage - full-screen queue on dark surround]
     B --> C[Item: large preview + context line]
     C --> D{Verb?}
-    D -- T --> E[Type-ahead tag picker - Enter assigns] --> C
+    D -- T --> E[Type-ahead ThemePicker - Enter assigns] --> C
     D -- S --> F[Star fills - admin-only] --> C
     D -- X --> G[Dismissed - undo offered - stays in library] --> H
     D -- right arrow --> H[Advance to next]
     D -- space --> V[Play or pause video] --> C
     H --> I{Queue empty?}
     I -- no --> C
-    I -- yes --> J[Queue clear - 40 reviewed, 9 starred, 31 tagged]
+    I -- yes --> J[Queue clear - 40 reviewed, 9 starred, 31 assigned to themes]
     J --> K[Go to starred]
     J --> L[Back to library]
-    C -. still transcoding .-> M[Processing placeholder - tag and star still work, playback waits]
+    C -. still transcoding .-> M[Processing placeholder - theme assignment and star still work, playback waits]
 ```
 
 **Key design decisions:** every verb is reversible in place and confirmation-free — dismiss included: an immediate **Undo** (Z or the toast) restores it, and ← revisits any previous item with all verbs still toggleable; dismiss only removes from the queue, never deletes; **space is play/pause** (media convention wins on a video-heavy queue) and only →/← navigate; the progress counter is always visible; the empty queue is a celebration state.
 
-**Queue semantics (membership rules):** "New this week" holds *untriaged* assets. Applying any verb (tag, star, dismiss) marks an item triaged — it leaves the queue when Petra advances past it. Navigating with →/← alone does **not** dequeue: passed-over items remain for the next session. Abandoning mid-session costs nothing — reopening the queue restores position and shows "12 triaged · 28 left."
+**Queue semantics (membership rules):** "New this week" holds *untriaged* assets. Applying any verb (theme assignment, star, dismiss) marks an item triaged — it leaves the queue when Petra advances past it. Navigating with →/← alone does **not** dequeue: passed-over items remain for the next session. Abandoning mid-session costs nothing — reopening the queue restores position and shows "12 triaged · 28 left."
 
 ### Flow 4 — Find & Export (Journey 3, second half)
 
 ```mermaid
 flowchart TD
-    A[Library] --> B[Combine filters: starred + tag folder + type + ambassador + date + search]
+    A[Library] --> B[Combine filters: starred + theme + type + ambassador + date + description search]
     B --> C[Results update under 500 ms]
     C --> D[Multi-select assets - selection bar appears]
     D --> E[Export as zip - size estimate shown first]
@@ -488,7 +490,7 @@ flowchart TD
     H -.-> I[Used counters tick + ambassador notifications]
 ```
 
-**Key design decisions:** filters compose (never replace each other) and render as removable chips; the selection bar carries bulk verbs (tag, export, delete) so acting on many feels like acting on one; the v1.1 check-off prompt attaches to the export event recorded in MVP. **Export is honest at scale:** the selection bar shows a size estimate before committing ("40 files · ~4.3 GB" — exports use originals, so multi-gigabyte is normal), zip assembly runs asynchronously with visible progress, and if Petra navigates away she gets an "export ready" notice instead of silence.
+**Key design decisions:** filters compose (never replace each other) and render as removable chips; the selection bar carries bulk verbs (theme, export, delete) so acting on many feels like acting on one; the v1.1 check-off prompt attaches to the export event recorded in MVP. **Export is honest at scale:** the selection bar shows a size estimate before committing ("40 files · ~4.3 GB" — exports use originals, so multi-gigabyte is normal), zip assembly runs asynchronously with visible progress, and if Petra navigates away she gets an "export ready" notice instead of silence.
 
 ### Flow 5 — Offboarding & Erasure (Journey 4, admin governance)
 
@@ -506,7 +508,7 @@ flowchart TD
     I --> J[Audit trail is the compliance evidence - done]
 ```
 
-**Key design decisions:** the flow mirrors the HR runbook step-for-step so the UI *is* the procedure; the confirmation dialog is a consequence summary (what, how many, forever), not a rhetorical "are you sure"; bystander erasure follows the same path but enters via search instead of ambassador filter.
+**Key design decisions:** the flow mirrors the HR runbook step-for-step so the UI *is* the procedure; the confirmation dialog is a consequence summary (what, how many, forever), not a rhetorical "are you sure"; bystander erasure discovery uses upload-description search followed by confirmation from the uploading ambassador for any remaining matches. Curated theme names do not contain personal data and are not a person-search surface.
 
 ### Flow 5b — Ambassador-Initiated Withdrawal & Erasure (the divorce, ambassador side)
 
@@ -555,7 +557,7 @@ flowchart TD
 
 - **One front door:** every entry (invite, task link, plain login, expired anything) resolves through the same link-consumption flow into a contextual destination — one pattern to build, one behavior to trust.
 - **Status is ambient:** upload strip, processing placeholders, queue counters — state lives where the user already is; no status modals, no polling screens.
-- **Verbs stay on the object:** tag/star/dismiss act on the item in place; bulk verbs live on the selection bar; acting never requires navigating.
+- **Verbs stay on the object:** theme/star/dismiss act on the item in place; bulk verbs live on the selection bar; acting never requires navigating.
 - **Consequence-first deletion:** every destructive dialog states scope, count, permanence, and (v1.1) affected generated children before offering the red button.
 - **Paused, never punished:** decline, deactivation, expiry — every "no" state names what happened and offers a one-tap way back (or a warm goodbye).
 - **Completions are celebrated:** delivered batch, cleared queue, downloaded zip — each flow ends with a designed full stop, feeding the accomplishment emotion.
@@ -564,7 +566,7 @@ flowchart TD
 
 - **Tap budget per flow:** session-alive fulfillment = 3 taps to upload-started; login detour adds exactly 2. Any new screen must justify its tap.
 - **Branches heal locally:** a rejected file, a dropped connection, an expired link — each is handled at its node without restarting the flow or losing prior progress.
-- **Progressive disclosure:** descriptions, tags, and metadata are always addable *after* the primary action, never gates before it.
+- **Progressive disclosure:** descriptions and metadata are always addable *after* the primary action, never gates before it; admins assign themes after upload rather than making ambassadors choose organization during contribution.
 - **Recovery is always one tap:** every error state carries its remedy as the primary button (request new link, retry, trim guidance).
 
 ## Component Strategy
@@ -591,14 +593,14 @@ From the themed headless layer (shadcn/Radix-style), used as-is with Fleet Deck 
 
 **TriageQueue** *(signature)*
 - **Purpose:** Clear 40 new uploads in one sitting, one motion per item.
-- **Anatomy:** Full-screen shell on `surface-media` black → large MediaPreview → context line (ambassador · task · date · size) → verb bar (Tag, Star, Dismiss, Next) → progress "12 of 40" + thin bar; keyboard legend on first use.
-- **States:** item default / tag-picker open / starred / dismissed (auto-advance) / processing item (placeholder; tag/star active, playback disabled) / queue-clear celebration summary.
-- **Interaction:** T tag, S star, X dismiss (Z undoes), → next, ← back, **space play/pause**; all reversible in place, none confirm; auto-advance after dismiss only (tag/star keep position for stacking verbs); ← revisits triaged items with verbs still toggleable.
+- **Anatomy:** Full-screen shell on `surface-media` black → large MediaPreview → context line (ambassador · task · date · size) → verb bar (Theme, Star, Dismiss, Next) → progress "12 of 40" + thin bar; keyboard legend on first use.
+- **States:** item default / theme-picker open / starred / dismissed (auto-advance) / processing item (placeholder; theme assignment/star active, playback disabled) / queue-clear celebration summary.
+- **Interaction:** T theme, S star, X dismiss (Z undoes), → next, ← back, **space play/pause**; all reversible in place, none confirm; auto-advance after dismiss only (theme/star keep position for stacking verbs); ← revisits triaged items with verbs still toggleable.
 - **Accessibility:** the keystroke model *is* the keyboard-operability story; visible focus, on-screen buttons mirror every key; `aria-live` announces item position.
 
 **GalleryGrid** *(signature)*
 - **Purpose:** One grid for library browsing, filtering results, and multi-select — media first.
-- **Anatomy:** Square thumbs (1:1), scrim'd meta line (name · date), star indicator, tag chip overflow (+2), video duration + play glyph, selection checkmark on hover/long-press.
+- **Anatomy:** Square thumbs (1:1), scrim'd meta line (name · date), star indicator, theme chip overflow (+2), video duration + play glyph, selection checkmark on hover/long-press.
 - **States:** default / hover (desktop: scrub + quick verbs) / selected (light-blue ring + black check on a light-blue chip — per the blue-disambiguation rule) / processing tile / empty state (warm illustration + primary action) / loading (skeleton tiles).
 - **Variants:** ambassador "My uploads" (own content + delete-own), admin library (full verbs), triage-adjacent starred view.
 - **Interaction:** click opens MediaPreview lightbox; shift-click range-select, ctrl/cmd toggle; long-press enters selection mode on touch; virtualized for thousands of assets.
@@ -613,8 +615,8 @@ From the themed headless layer (shadcn/Radix-style), used as-is with Fleet Deck 
 **Supporting custom components (compact specs):**
 
 - **TaskCard** — beige card: badge (New/Due/Completed), title, "From {admin} · {campaign context}", single primary **Add content** button; states: new/in-progress (shows delivered count)/completed/expired-quiet. The *only* CTA on the ambassador home.
-- **TagPicker** — type-ahead combobox over existing tags + "Create '{query}'" row; multi-assign; chips removable inline; same component in triage (keyboard-summoned) and library bulk-tag (from SelectionBar).
-- **SelectionBar** — slides up when selection > 0: "{n} selected · {~size estimate} · Tag · Export zip · Delete · Clear"; export builds asynchronously with progress and an "export ready" notice; delete routes through ConsequenceDialog; sticky bottom on desktop library.
+- **ThemePicker** — a type-ahead combobox over active curated themes with multi-assign and removable selections. Authorized admins receive an inline “Create theme” affordance so triage remains uninterrupted when a needed theme does not exist. Archived themes are absent from this assignment picker and reject new assignments, but remain available in filters, theme browse views, and connected-upload views until restored. This control replaces the freeform TagPicker rather than renaming it.
+- **SelectionBar** — slides up when selection > 0: "{n} selected · {~size} · Theme · Export zip · Delete · Clear"; export builds asynchronously with progress and an "export ready" notice; delete routes through ConsequenceDialog; sticky bottom on desktop library.
 - **ConsequenceDialog** — destructive confirmations as consequence summaries: what, how many, permanence line ("This can't be undone — the audit log records it"), v1.1 generated-children list slot; red confirm button labeled with the verb + count ("Delete 34 assets"), never "OK".
 - **CelebrationMoment** — one-shot completion treatment (Core Blue + Light Blue, icon, specific context text) for delivered batches, cleared queues, and (v1.1) usage notifications; static variant under `prefers-reduced-motion`; auto-dismisses, never gates.
 
@@ -629,7 +631,7 @@ From the themed headless layer (shadcn/Radix-style), used as-is with Fleet Deck 
 
 **Phase 1 — the contribution loop (MVP-blocking, build first):** UploadManager, ConsentCardStack, TaskCard, MediaPreview (processing states first), GalleryGrid (browse + delete-own variant). These sit under Journeys 1–2 and the activation metric.
 
-**Phase 2 — the curation loop (MVP):** TriageQueue, TagPicker, SelectionBar, ConsequenceDialog, filter rail (composed from primitives + chips — no custom component needed), export flow glue.
+**Phase 2 — the curation loop (MVP):** TriageQueue, ThemePicker, SelectionBar, ConsequenceDialog, filter rail (composed from primitives + chips — no custom component needed), export flow glue.
 
 **Phase 3 — polish + v1.1 seams:** CelebrationMoment everywhere it belongs, notification email/SMS templates (core-palette only), audit-event hooks in ConsequenceDialog. **v1.1 components designed in the v1.1 cycle:** GenerationModal, VersionHistory, FamilyTree viewer, Leaderboard, StatsPage, export check-off prompt.
 
@@ -653,7 +655,7 @@ From the themed headless layer (shadcn/Radix-style), used as-is with Fleet Deck 
 
 ### Form Patterns
 
-Forms are deliberately scarce (login email, optional descriptions, tag creation, task/message compose, ambassador invite). Where they exist:
+Forms are deliberately scarce (login email, optional descriptions, theme creation, task/message compose, ambassador invite). Where they exist:
 
 - Single column, labels above fields, generous spacing; nothing marked "required" — instead the rare optional field is marked "(optional)" because required is the exception here.
 - Validate on blur and on submit; message sits under the field; input content is never cleared by an error.
@@ -663,7 +665,7 @@ Forms are deliberately scarce (login email, optional descriptions, tag creation,
 ### Navigation Patterns
 
 - **Ambassador (bottom tab bar):** four tabs — Tasks, Upload, My uploads, Profile. Blue active state, light-blue badge counts. The Upload tab exists so spontaneous contribution is always one tap, independent of tasks (flow specified in Experience Mechanics A2); Profile hosts the "Your consent" panel (Flow 5b).
-- **Admin (top bar + left rail):** rail carries views (New this week, Starred, All assets), tag folders, and filter groups; no breadcrumbs — the hierarchy is deliberately shallow (library + detail overlays).
+- **Admin (top bar + left rail):** rail carries views (New this week, Starred, All assets), a theme filter facet, and other filter groups; no breadcrumbs — the hierarchy is deliberately shallow (library + detail overlays).
 - **Full-screen overlays** (triage, lightbox): entered from the library, exited with Esc/back/X, focus returns to the originating tile. Overlays never stack more than one deep.
 - **Browser back always works:** SPA routing respects history; filter combinations are URL-encoded so admins can bookmark and share filtered views with each other.
 
@@ -671,7 +673,7 @@ Forms are deliberately scarce (login email, optional descriptions, tag creation,
 
 - **Empty states are invitations:** every empty view names why it's empty and offers the next action ("No tasks right now — spontaneous uploads are always welcome" → Upload button; empty library → "Invite your first ambassadors"). Warm tone, never blank.
 - **Loading:** skeleton tiles/rows appear only after a 200 ms delay (no flash on fast loads); media placeholders reserve exact layout space — the interface never reflows as content arrives.
-- **Search & filter:** filters compose as removable chips with a one-tap "clear all"; results update live (< 500 ms, no Apply button); search covers descriptions and tags; an active-filter state is always visible so "why am I seeing only 3 items" never happens.
+- **Search & filter:** filters compose as removable chips with a one-tap "clear all"; results update live (< 500 ms, no Apply button); search covers upload descriptions, while themes are available through filtering and browse views; an active-filter state is always visible so "why am I seeing only 3 items" never happens.
 - **Modals & sheets:** decisions and compose only — never status display. Bottom sheets on mobile, centered dialogs on desktop; focus-trapped, Esc-dismissable, focus returned.
 - **Outbound messages (email/SMS) follow app patterns:** personal sender framing ("Hi Jonas — Petra needs…"), exactly one action per message, core palette only (no light blue/pink outside the app), and every link has a friendly expired-state landing.
 - **Dates & names:** relative dates in dense views ("today," "Mon"), absolute on hover/detail; ambassadors always shown as full names — the `jonas-lindqvist-2026-06-24` form exists only in export filenames.
@@ -683,7 +685,7 @@ Forms are deliberately scarce (login email, optional descriptions, tag creation,
 **Two surfaces, two adaptation philosophies:**
 
 - **Ambassador surface — designed at 360–430 px, scales up.** The phone layout *is* the design; on tablet/desktop it becomes a centered single column (max 560 px) with the same bottom-anchored actions rendered inline. No feature differences across sizes — Jonas gets an identical experience everywhere, just with more margin.
-- **Admin surface — designed at ≥ 1280 px, adapts down deliberately.** Desktop is the full cockpit (rail + grid + keyboard verbs). On tablet, the rail collapses to a toggle drawer, triage verbs become tap buttons, and hover-scrub becomes tap-to-play. On phone, admin mode is **check-in mode**: browse, search, preview, star, and single-item actions work; bulk operations (multi-select export, bulk delete, bulk tagging) remain desktop/tablet-only per the PRD — shown with a gentle "this works best on a bigger screen" note, never a dead button.
+- **Admin surface — designed at ≥ 1280 px, adapts down deliberately.** Desktop is the full cockpit (rail + grid + keyboard verbs). On tablet, the rail collapses to a toggle drawer, triage verbs become tap buttons, and hover-scrub becomes tap-to-play. On phone, admin mode is **check-in mode**: browse, search, preview, star, and single-item actions work; bulk operations (multi-select export, bulk delete, bulk theme assignment) remain desktop/tablet-only per the PRD — shown with a gentle "this works best on a bigger screen" note, never a dead button.
 - **What never changes across sizes:** the one-primary-action rule, ambient status (upload strip, processing placeholders), soft-edge error structure, and media-first layout.
 
 ### Breakpoint Strategy

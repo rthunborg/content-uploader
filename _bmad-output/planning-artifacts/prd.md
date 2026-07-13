@@ -1,6 +1,7 @@
 ---
-stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation (skipped - no innovation signals)', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete']
+stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation (skipped - no innovation signals)', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete', 'step-e-01-discovery', 'step-e-02-review', 'step-e-03-edit']
 completedAt: '2026-07-06'
+date: '2026-07-12'
 classification:
   projectType: web_app
   domain: general (internal HR/marketing content management, GDPR-sensitive)
@@ -14,10 +15,13 @@ documentCounts:
   brainstorming: 1
   projectDocs: 0
 workflowType: 'prd'
-lastEdited: '2026-07-06'
+workflow: 'edit'
+lastEdited: '2026-07-12'
 editHistory:
   - date: '2026-07-06'
     changes: 'Post-validation fixes: quantified NFR2/NFR3/NFR10/NFR16; tightened FR9/FR11/FR19/FR36 wording; fixed export filename collision (FR30 + scope item 6); added Journey 5 (v1.1 generate-publish-prove loop) closing traceability gaps; promoted consent cards and offboarding/erasure runbook to standalone versioned artifacts; rewrote References'
+  - date: '2026-07-12'
+    changes: 'Applied the approved Sprint Change Proposal 2026-07-10: replaced the freeform taxonomy with curated MVP themes; provisioned dormant campaign seams for an admin-only v2 calendar; preserved the independent v1.1 usage loop; synchronized journeys, requirements, scope, phasing, and terminology; and completed post-validation cleanup of FR/NFR implementation leakage and frontmatter metadata.'
 ---
 
 # Product Requirements Document - stena-content-portal
@@ -29,15 +33,15 @@ editHistory:
 
 The Stena Content Portal is an internal, mobile-first web platform that turns 10–20 employee ambassadors into a steady, consented source of authentic media content — and gives Stena's HR/marketing admins one fast library to request, organize, and publish from.
 
-Today, authentic employee content dies in a silent hole: clips are scattered across personal phones, chat threads, and shared drives; nobody can prove what is cleared for use; contributors never learn whether their material mattered and stop contributing. The portal replaces this with a closed content-request loop: admins send a request (email/SMS), ambassadors fulfill it from their phone in a 90-second moment, admins triage new arrivals in an inbox-style queue, tag and star, and export publish-ready assets with human-readable filenames — from "need content" to published asset in under 10 minutes.
+Today, authentic employee content dies in a silent hole: clips are scattered across personal phones, chat threads, and shared drives; nobody can prove what is cleared for use; contributors never learn whether their material mattered and stop contributing. The portal replaces this with a closed content-request loop: admins send a request (email/SMS), ambassadors fulfill it from their phone in a 90-second moment, admins triage new arrivals in an inbox-style queue, assign curated themes, star keepers, and export publish-ready assets with human-readable filenames — from "need content" to published asset in under 10 minutes.
 
-The product ships in two deliberate releases. The MVP fills the library and establishes the request → upload → organize → export loop. A fast-follow v1.1 exploits the filled library: AI content generation with full source provenance, one-click LinkedIn sharing, first-class campaigns, and an ambassador leaderboard. AI generation is deferred precisely because it needs a full library to be useful — giving the program two launch moments instead of one risky big bang.
+The product ships in three deliberate stages. The MVP fills the library, establishes the request → upload → organize → export loop, exposes curated themes, and provisions campaign data seams without campaign UI. A fast-follow v1.1 exploits the filled library through AI content generation with full source provenance, one-click LinkedIn sharing, used-content tracking, program insights, and an ambassador leaderboard. An admin-only campaign calendar follows in v2. AI generation is deferred precisely because it needs a full library to be useful — preserving focused launch moments instead of one risky big bang.
 
 ### What Makes This Special
 
 - **The task is the trigger.** This is not an upload dumping ground; it is a content-request loop. Contribution is dual-mode — admin-pulled (tasks via SMS/email) and spontaneous — but the pull loop is the engine that keeps the library filling on demand.
 - **Consent is structural, not a checkbox.** Versioned terms, plain-language consent cards, stored acceptance records, re-accept-on-change, and a documented offboarding/erasure runbook mean every asset in the library is provably usable. This is the difference between "we have content" and "we can legally publish this" — with zero-incident GDPR traceability as an explicit success criterion.
-- **One asset model, three origins.** Ambassador uploads, admin brand assets, and (v1.1) AI-generated content are a single Asset entity (`origin: ambassador | admin | generated`) sharing one taxonomy (tags rendered as folders), auto-derived type categories, and full provenance — one build serves every content surface, and generated content carries a family tree back to its sources.
+- **One asset model, three origins.** Ambassador uploads, admin brand assets, and (v1.1) AI-generated content are a single Asset entity (`origin: ambassador | admin | generated`) sharing curated themes, auto-derived type categories, and full provenance. Assets and themes are many-to-many, and connections require explicit admin action; generated content carries a family tree back to its sources without inheriting organization from them.
 - **Motivation runs on proof of use.** Ambassadors are notified when their content is used; leaderboards count "used in published content," not raw volume; admins get a stats page proving program value. Triage signals (stars, dismissals) stay admin-private — praise in public, triage in private.
 
 ## Project Classification
@@ -61,8 +65,8 @@ The product ships in two deliberate releases. The MVP fills the library and esta
 **Admins** (the library must be faster than the old way):
 
 - An admin can go from "need content" → exported, publish-ready asset in **under 10 minutes**.
-- The "new this week" triage queue lets an admin review, tag, and star 40 new uploads in a single sitting with instant previews.
-- Any asset is findable by ambassador, type, date, or tag/folder in seconds — no full-library scrolling.
+- The "new this week" triage queue lets an admin review, assign curated themes, and star 40 new uploads in a single sitting with instant previews.
+- Any asset is findable by ambassador, type, date, or theme in seconds; admins can open a theme to browse its connected uploads.
 
 ### Business Success
 
@@ -71,7 +75,7 @@ First 6 months after MVP launch:
 - ≥ 70% of invited ambassadors accept terms and upload at least once.
 - ≥ 50% of content request tasks fulfilled within 7 days.
 - ≥ 25% of uploads eventually marked "used" in published content.
-- v1.1 (AI generation, LinkedIn share, campaigns, leaderboard) ships as a fast follow ~4–6 weeks after MVP, exploiting the filled library.
+- v1.1 (AI generation, LinkedIn share, used-content tracking, program insights, leaderboard) ships as a fast follow ~4–6 weeks after MVP, exploiting the filled library independently of campaigns.
 - The stats page can prove the program's value to the stakeholder — uploads over time, % used, top content — as the "receipt" justifying continued investment.
 
 ### Technical Success
@@ -107,13 +111,13 @@ First 6 months after MVP launch:
 2. **Ambassador upload** — camera-roll-first batch upload + capture mode, descriptions, delete-own, per-type size limits, chunked auto-retry
 3. **Content request tasks** — in-app task list, mark-done by either side, notification via plain email/SMS (no magic-link deep-links in MVP)
 4. **Messaging** — email AND SMS, to one ambassador or all active ambassadors
-5. **Admin library** — filters (ambassador/type/category/date/tag-folder), transcoding + thumbnail pipeline, admin-private starring, "new this week" triage queue
-6. **Tags/folders + zip export** — one taxonomy (tags rendered as folders), multi-select tagging, `{ambassador-name}-{upload-date}-{nn}` filenames in zip (sequence suffix disambiguates same-day batches)
+5. **Admin library** — filters (ambassador/type/category/date/theme), theme browse views, transcoding + thumbnail pipeline, admin-private starring, "new this week" triage queue with curated theme assignment
+6. **Themes + zip export** — admin-managed curated themes with create/view/update/archive/restore lifecycle, guarded hard-delete only at zero connected assets, explicit individual and bulk many-to-many asset assignment, and `{ambassador-name}-{upload-date}-{nn}` filenames in zip (sequence suffix disambiguates same-day batches)
 7. **Ambassador management** — invite by email, activate/deactivate, delete, last-login/activity; contact data admin-owned
 8. **Admin brand-asset uploads** — `origin: admin` on the shared asset model
 9. **Audit event logging** — deletes/uploads/exports/shares logged from day one (viewer UI in v1.1)
 
-*Campaign workaround:* campaigns are naming-convention tags (e.g. `campaign-summer-2026`) until v1.1.
+*Organization seams:* MVP provisions `themes` and `asset_themes` for the exposed theme feature, plus dormant `campaigns` and `asset_campaigns`, including nullable `campaigns.theme_id`; it exposes no campaign or calendar UI. Campaign-asset and theme-asset connections require explicit admin action and are never inferred from `assets.task_id`, upload, generation, or other workflow context. The admin-only campaign calendar activates in v2; the ambassador landing page remains the task list.
 
 ### Growth Features (Post-MVP)
 
@@ -122,14 +126,18 @@ First 6 months after MVP launch:
 10. **AI generation suite** — prompt + source uploads + output type/settings modal, generated library, re-prompt version history, source family tree, used-credit propagation to source ambassadors
 11. **Share-to-social (LinkedIn)** with caption + share events
 12. **Tokenized 1:1 magic-link tasks** — SMS/email link straight into upload/capture
-13. **Campaigns as first-class objects** + used-content tracking (share events + export check-off prompts)
+13. **Used-content tracking** — share events, export check-off prompts, ambassador usage notifications, and usage counters; this loop does not depend on campaigns
 14. **Leaderboard** — all-time + rolling 3-month windows, visible to ambassadors and admins
 15. **Stats/metrics page** + audit trail viewer
 
+**v2 — campaign calendar:**
+
+16. **Campaigns as first-class objects** — admin-only calendar, campaign lifecycle, optional selected theme, and explicit many-to-many asset connections; campaign reporting activates with this calendar
+
 ### Vision (Future)
 
-16. **SSO** (stakeholder-agreed post-MVP)
-17. Bulk per-recipient tokenized links, additional social channels beyond LinkedIn, advanced AI output types, further AI workflow iterations
+17. **SSO** (stakeholder-agreed post-MVP)
+18. Bulk per-recipient tokenized links, additional social channels beyond LinkedIn, advanced AI output types, further AI workflow iterations
 
 ## User Journeys
 
@@ -139,7 +147,7 @@ First 6 months after MVP launch:
 
 **Rising action:** First login shows three plain-language consent cards: *your content helps promote Stena* / *everyone in the shot said yes* / *you stay in control*. Full legal text linked beneath. He taps accept on each — his account activates, and the acceptance (user, terms version, timestamp) is stored. A week later his phone buzzes: SMS from HR — *"We need Midsummer deck photos for a recruiting campaign — can you help?"* He opens the portal, sees the task in his task list, hits upload, selects 12 photos from his camera roll in one motion — no per-file forms — and walks away while chunked upload runs in the background.
 
-**Climax:** He marks the task done. Two weeks later a notification: *"Your photo was used in a published campaign!"* His profile counter ticks up.
+**Climax:** He marks the task done. Two weeks later a notification: *"Your photo was used in published content!"* His profile counter ticks up.
 
 **Resolution:** Contributing costs Jonas nothing — no passwords, no forms, no wondering if it mattered. He keeps shooting.
 
@@ -157,17 +165,17 @@ First 6 months after MVP launch:
 
 **Reveals requirements for:** client-side size validation with per-type limits and friendly errors, chunked auto-retry resilience, terms re-accept-on-change, decline → inactive + self-service re-entry, message/task suppression for inactive accounts, delete-own-content, audit logging.
 
-### Journey 3 — Petra's Monday: 40 new uploads, campaign deadline, one triage session (admin happy path)
+### Journey 3 — Petra's Monday: 40 new uploads, recruitment deadline, one triage session (admin happy path)
 
 **Opening scene:** Petra (HR/marketing, small team) opens the portal Monday morning. A recruitment campaign ships Friday. The library shows *"New this week: 40."*
 
-**Rising action:** She enters the triage queue — instant thumbnail previews from the transcoding pipeline, even for 2 GB videos. She rips through the queue: tag `campaign-summer-2026`, star the keepers, skip the rest — one motion per item, no page-hopping. Stars and dismissals are admin-only; no ambassador ever sees a rejection. Needing one more deck shot, she sends a task to three ambassadors via SMS in one send. Wednesday, Jonas's photos arrive in the queue, pre-linked to context. She filters the library — starred + `campaign-summer-2026` — multi-selects, and exports a zip.
+**Rising action:** She enters the triage queue — instant thumbnail previews from the transcoding pipeline, even for 2 GB videos. She rips through the queue: explicitly assigning the curated theme `Life on board`, starring the keepers, and skipping the rest — one motion per item, no page-hopping. Stars and dismissals are admin-only; no ambassador ever sees a rejection. Needing one more deck shot, she sends a task to three ambassadors via SMS in one send. Wednesday, Jonas's photos arrive linked to the task through `assets.task_id`, with no theme or campaign connection inferred from that context. Petra explicitly assigns `Life on board`, filters the library by starred + theme, multi-selects, and exports a zip.
 
 **Climax:** The zip opens with human-readable filenames — `jonas-lindqvist-2026-06-24.jpg`, not `IMG_4417.MOV`. She hands it straight to the agency. Under 10 minutes from "need content" to publish-ready export.
 
 **Resolution:** Later, the portal asks her to check off which exported items were actually published — feeding honest "used" counters and Jonas's notification. The library is her cockpit: request, triage, organize, export, confirm — one tool.
 
-**Reveals requirements for:** triage queue, transcoding/thumbnail pipeline, admin-private starring, tag-as-folder taxonomy, filters (ambassador/type/date/tag), task creation + bulk SMS/email messaging, multi-select zip export with naming convention, export check-off prompts, used-content tracking, admin brand-asset upload (same library).
+**Reveals requirements for:** triage queue, transcoding/thumbnail pipeline, admin-private starring, curated theme lifecycle and explicit assignment, filters (ambassador/type/date/theme), connected-upload theme browsing, task creation + bulk SMS/email messaging, multi-select zip export with naming convention, export check-off prompts, used-content tracking, admin brand-asset upload (same library), and no organization inferred from task context.
 
 ### Journey 4 — The departed ambassador: offboarding under GDPR (governance/operations)
 
@@ -175,11 +183,11 @@ First 6 months after MVP launch:
 
 **Rising action:** Petra sets the account inactive — task sends and messages stop instantly. She filters the library by ambassador, reviews, and bulk-deletes. The deletion warning flags dependents: two AI-generated assets (v1.1) used her uploads as sources. She reviews the flagged items and deletes one, regenerates the other without the departed person's material.
 
-**Climax:** Every deletion lands in the audit trail — who, what, when. That trail *is* the compliance evidence if anyone asks. A month later a different request arrives: a person with no account appears in someone else's upload and wants out. Petra searches descriptions/tags, asks the uploading ambassador, deletes the matches and their generated children, and responds within the deadline — the documented bystander-erasure process.
+**Climax:** Every deletion lands in the audit trail — who, what, when. That trail *is* the compliance evidence if anyone asks. A month later a different request arrives: a person with no account appears in someone else's upload and wants out. Petra searches upload descriptions and asks the uploading ambassador to identify any remaining matches, then deletes the confirmed assets and their generated children within the deadline. With the former freeform taxonomy removed, bystander findability intentionally rests on upload descriptions plus human confirmation from the uploader. Curated theme names will not contain personal data and are not a person-search surface. This is an accepted, documented consequence of the curated theme model, not a regression to solve with another freeform taxonomy.
 
 **Resolution:** Offboarding is a calm 15-minute runbook, not a panic. Nothing lingers that shouldn't; everything that happened is provable.
 
-**Reveals requirements for:** activate/deactivate with send-suppression, filter-by-ambassador + bulk delete, generated-children warnings on delete (family tree), audit trail as compliance record, search across descriptions/tags, documented manual erasure runbook, ambassador management (contact data admin-owned, last-login/activity).
+**Reveals requirements for:** activate/deactivate with send-suppression, filter-by-ambassador + bulk delete, generated-children warnings on delete (family tree), audit trail as compliance record, upload-description search plus uploader confirmation, themes excluded from person search, documented manual erasure runbook, ambassador management (contact data admin-owned, last-login/activity).
 
 ### Journey 5 — Petra generates, publishes, and proves it (v1.1 value loop)
 
@@ -187,11 +195,11 @@ First 6 months after MVP launch:
 
 **Rising action:** Petra opens the generation modal: a prompt (*"45-second recruiting cut — life on deck, warm tone"*), four starred source clips selected from the library, output type and settings. The first result drags in the middle; she re-prompts — each iteration lands as a new version with prior versions still revisitable. Version three is right. The generated asset sits in the library like any other (`origin: generated`), carrying its family tree: every source clip, every prompt, every version.
 
-**Climax:** She shares it to LinkedIn with a caption straight from the portal. The share is recorded as a usage event, and "used" credit propagates to the four source clips' ambassadors — Jonas's phone buzzes: *"Your clip was used in a published campaign!"* Thursday morning she opens the stats page in the stakeholder meeting: uploads over time, % used, campaigns, top content — the receipt. When a question about a deleted asset comes up, she answers it on the spot from the audit-trail viewer.
+**Climax:** She shares it to LinkedIn with a caption straight from the portal. The share is recorded as a usage event, and "used" credit propagates to the four source clips' ambassadors — Jonas's phone buzzes: *"Your clip was used in published content!"* Thursday morning she opens the stats page in the stakeholder meeting: uploads over time, % used, top content — the receipt. These v1.1 insights and notifications work without campaign objects; campaign reporting activates later with the v2 calendar. When a question about a deleted asset comes up, she answers it on the spot from the audit-trail viewer.
 
 **Resolution:** The library stops being an archive and becomes a production line: source content in, published content out, credit flowing back to the people who filmed it, and the program's value provable in one screen.
 
-**Reveals requirements for:** AI generation modal (prompt + source assets + output type/settings), re-prompt version history, generated-origin assets in the shared library, source family tree, LinkedIn share with caption + share events, used-credit propagation, usage notifications, campaigns, stats page, audit-trail viewer.
+**Reveals requirements for:** AI generation modal (prompt + source assets + output type/settings), re-prompt version history, generated-origin assets in the shared library, source family tree, LinkedIn share with caption + share events, used-credit propagation, usage notifications, campaign-independent stats page, audit-trail viewer.
 
 ### Journey Requirements Summary
 
@@ -200,7 +208,7 @@ First 6 months after MVP launch:
 | Auth & onboarding (magic link, invite, consent cards, versioned terms, re-accept) | J1, J2 | MVP |
 | Upload pipeline (camera-roll batch, capture, size validation, chunked retry, delete-own) | J1, J2 | MVP |
 | Tasks & messaging (task list, mark-done, SMS/email individual + bulk) | J1, J3 | MVP |
-| Admin library (triage queue, previews/transcoding, stars, filters, tags-as-folders) | J3 | MVP |
+| Admin library (triage queue, previews/transcoding, stars, theme assignment/filtering/browsing) | J3 | MVP |
 | Export & usage loop (zip + naming, export check-offs, usage notifications, counters) | J1, J3 | MVP core; check-offs/counters v1.1 |
 | Ambassador management & governance (activate/deactivate, bulk delete, audit trail, erasure runbook) | J2, J4 | MVP |
 | Provenance & AI family tree (source links, generated-children warnings, credit propagation) | J3, J4, J5 | v1.1 |
@@ -255,7 +263,7 @@ Responsive web application, mobile-first for ambassadors and desktop-first for a
 
 ### Technical Architecture Considerations
 
-- **SPA-style app** (or SPA-per-area) — the admin library/triage experience demands instant, no-reload interactions (previews, keystroke tagging, multi-select), and the ambassador flow needs an app-like feel on mobile. Framework choice deferred to architecture.
+- **SPA-style app** (or SPA-per-area) — the admin library/triage experience demands instant, no-reload interactions (previews, keystroke theme assignment, multi-select), and the ambassador flow needs an app-like feel on mobile. Framework choice deferred to architecture.
 - **Uploads are the make-or-break subsystem:** chunked, resumable-under-the-hood, background-tolerant uploads (Uppy/tus/S3-multipart style) with client-side validation before transfer starts. Everything else is standard CRUD.
 - **Transcoding pipeline runs async server-side:** upload completes fast; previews/thumbnails appear when ready. The UI must handle the "processing" state gracefully.
 - **Magic-link auth shapes routing:** every entry point (invite, task notification, plain login) resolves through one link-consumption flow; sessions must be long-lived enough that ambassadors aren't re-authenticating every visit (policy set during architecture).
@@ -307,17 +315,19 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 
 ### MVP Feature Set (Phase 1)
 
-**Core User Journeys Supported:** Journey 1 (invite → consent → task → upload), Journey 2 (limits, retries, decline/re-entry, delete-own), Journey 3 (triage → tag/star → export; check-off prompts deferred), Journey 4 (offboarding/erasure — manual runbook over MVP features).
+**Core User Journeys Supported:** Journey 1 (invite → consent → task → upload), Journey 2 (limits, retries, decline/re-entry, delete-own), Journey 3 (triage → theme assignment/star → export; check-off prompts deferred), Journey 4 (offboarding/erasure — manual runbook over MVP features).
 
 **Must-Have Capabilities:** the nine MVP items in *Product Scope → MVP* (items 1–9).
 
-**Deliberately manual in MVP** (product features later, humans now): offboarding/erasure (runbook), campaign grouping (naming-convention tags), usage confirmation (informal until v1.1 check-offs), audit review (log exists, viewer UI later).
+**Deliberately manual or dormant in MVP:** offboarding/erasure uses a runbook; campaign schema exists without campaign/calendar UI until v2; usage confirmation remains informal until v1.1 check-offs; audit events are logged while the viewer UI waits for v1.1. Campaign and theme connections are never inferred from tasks, uploads, generation, or other workflow context.
 
 ### Post-MVP Features
 
-**Phase 2 (v1.1, ~4–6 weeks post-MVP):** items 10–15 in *Product Scope → Growth Features*. Theme: exploit the filled library; give the program its "wow" second launch.
+**Phase 2 (v1.1, ~4–6 weeks post-MVP):** items 10–15 in *Product Scope → Growth Features*. Theme: exploit the filled library through AI generation, sharing, usage tracking, engagement, and program insights; the usage loop remains independent of campaigns.
 
-**Phase 3 (Expansion):** items 16–17 in *Product Scope → Vision*.
+**Phase 3 (v2):** item 16 in *Product Scope → Growth Features*. The admin-only campaign calendar activates over the dormant MVP schema, including campaign reporting and explicit asset connections.
+
+**Phase 4 (Expansion):** items 17–18 in *Product Scope → Vision*.
 
 ### Risk Mitigation Strategy
 
@@ -351,7 +361,7 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 - FR12: Uploads automatically recover from connection interruptions without user intervention or visible failure
 - FR13: Ambassadors can add descriptions to their uploads
 - FR14: Ambassadors can view their own uploads and delete any of them at any time
-- FR15: Uploads made in the context of a task are automatically linked to that task
+- FR15: Uploads made in the context of a task are automatically linked to that task. This linkage never creates, infers, or propagates a theme or campaign connection for the asset.
 
 ### Content Requests & Messaging (MVP)
 
@@ -366,10 +376,10 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 - FR21: Admins can browse all assets in one shared library regardless of origin (ambassador upload or admin brand asset)
 - FR22: The system auto-derives each asset's content-type category from the file itself; no manual categorization
 - FR23: The system generates web-friendly preview renditions and thumbnails for every asset, preserving originals untouched, and shows a processing state until ready
-- FR24: Admins can filter the library by ambassador, content type, upload date, and tag/folder, and search by description and tags
-- FR25: Admins can review new arrivals in a "new this week" triage queue with previews and single-action tagging/starring per item
+- FR24: Admins can filter the library by ambassador, content type, upload date, and theme; search upload descriptions; and open a theme to browse all connected uploads. Theme names are curated organization labels and are not a person-search surface.
+- FR25: Admins can review new arrivals in a "new this week" triage queue with previews and single-action theme assignment and starring per item. The theme assignment control uses the curated active-theme list and, for authorized admins, offers inline theme creation without leaving triage.
 - FR26: Admins can star/unstar assets as a quality signal; stars are shared across all admins and never visible to ambassadors
-- FR27: Admins can create tags and assign/remove them on assets, including multi-select bulk tagging; tags are browsable as folders
+- FR27: Admins can create, view, update, archive, restore, and—when unconnected—hard-delete curated themes; assign or remove themes on individual assets and multi-select batches; and open any theme to browse its connected uploads. Assets and themes have a many-to-many relationship. A theme may be hard-deleted only when it has zero connected assets. A connected theme must be archived instead: archiving preserves all existing connections, blocks new assignments until the theme is restored, removes it from the assignment picker, and keeps it filterable and viewable with its connected uploads. Theme connections are created only by explicit admin actions and are never inferred from upload or task context.
 - FR28: Admins can upload brand assets into the same library, marked as admin-origin
 - FR29: Admins can delete any asset, including multi-select bulk deletion; deletes are permanent
 
@@ -392,7 +402,7 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 ### AI Content Generation (v1.1)
 
 - FR37: Admins can generate new content by providing a prompt, selecting source assets, and choosing output type and settings
-- FR38: Generated assets appear in the library as generated-origin, with tags, filters, starring, and export working as for any asset
+- FR38: Generated assets appear in the library as generated-origin, with theme assignment, theme filtering and browsing, starring, and export working as for any asset. Theme connections require an explicit admin action and are never inferred from generation sources or other workflow context.
 - FR39: Admins can iteratively re-prompt a generated asset; each iteration creates a new version with prior versions revisitable
 - FR40: The system records each generated asset's source assets (family tree); deleting a source warns about affected generated children
 - FR41: When a generated asset is used, "used" credit propagates to the source uploads' ambassadors
@@ -403,22 +413,25 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 - FR43: The system prompts admins after zip exports to confirm which exported items were published (per-item check-off)
 - FR44: Ambassadors are notified when their content is used in published material, and their profile shows a usage counter
 
-### Campaigns & Engagement (v1.1)
+### Campaign Calendar (v2)
 
-- FR45: Admins can create campaigns and link tasks, assets, shares, and usage to them
+- FR45 (v2): Admins can create, view, update, archive/restore, and delete time-boxed campaigns in an admin-only calendar. A campaign has a name, a description, start and end dates, and at most one selected theme; it can be created before a theme is chosen. Campaigns and assets have a many-to-many relationship. Asset connections are created only by explicit admin actions and are never inferred or propagated from task linkage or other workflow context. MVP provisions campaign and campaign-asset data foundations without campaign or calendar UI; the ambassador landing page remains the task list.
+
+### Engagement & Program Insights (v1.1; campaign reporting v2)
+
 - FR46: Admins can send task links that open directly into the upload/capture flow via tokenized 1:1 magic links
 - FR47: All users can view a top-5 ambassador leaderboard with all-time and rolling 3-month windows, ranked by uploads and used uploads
-- FR48: Admins can view a stats page (uploads over time, % used, campaigns, top content) and browse the audit trail in a viewer UI
+- FR48: Admins can view a stats page showing uploads over time, percentage used, and top content, and can browse the audit trail in a viewer UI. Campaign reporting activates with the v2 campaign calendar.
 
 ## Non-Functional Requirements
 
 ### Performance
 
 - NFR1: Task link → interactive upload screen in **< 3 s on a 4G mobile connection**; the full task-to-upload journey completes in < 2 min
-- NFR2: Library and triage thumbnails render in **< 200 ms** of entering the viewport (pre-generated renditions, lazy loading); video previews start playback in **< 2 s**
-- NFR3: Preview renditions and thumbnails are available within **5 minutes of upload completion for a max-size (2 GB) video**, sooner for smaller files (async pipeline); the UI shows a processing state, never a broken preview
-- NFR4: Upload of a max-size file (2 GB video) succeeds on an unstable connection via chunked auto-retry, with progress visible throughout
-- NFR5: Library interactions (filter, search, tag, star) respond in **< 500 ms** at expected library sizes (thousands of assets over years)
+- NFR2: Library and triage thumbnails render in **< 200 ms** of entering the viewport; video previews start playback in **< 2 s**
+- NFR3: Preview renditions and thumbnails are available within **5 minutes of upload completion for a max-size (2 GB) video**, sooner for smaller files; the UI shows a processing state, never a broken preview
+- NFR4: Upload of a max-size file (2 GB video) succeeds on an unstable connection, with progress visible throughout and automatic recovery from interruptions without user action
+- NFR5: Library interactions (filter, search, theme assignment, star) respond in **< 500 ms** at expected library sizes (thousands of assets over years)
 
 ### Security & Privacy
 

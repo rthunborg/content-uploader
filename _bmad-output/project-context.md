@@ -1,7 +1,7 @@
 ---
 project_name: 'stena-content-portal'
 user_name: 'Rasmus'
-date: '2026-07-08'
+date: '2026-07-12'
 sections_completed:
   ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
@@ -131,6 +131,14 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
   (prepared statements unsupported); worker → `DATABASE_SESSION_URL`; migrations → `DIRECT_URL` only.
 - Schema: one file per domain in `src/db/schema/*.ts`, re-exported from `index.ts`. `audit.ts` holds the
   expiring class ONLY; `usage.ts`/`exports.ts`/`messaging.ts` are the durable class.
+- Organization has two orthogonal axes: curated `themes` are live in MVP; `campaigns` and
+  `asset_campaigns` are dormant v2 schema seams with no MVP readers, routes, or UI. Campaigns include
+  `name`, description/date fields, and nullable `theme_id REFERENCES themes(id) ON DELETE SET NULL`.
+  `asset_themes` and `asset_campaigns` both enforce composite uniqueness on their two FK columns.
+- Both asset join tables are manual-insert-only through explicit admin DAL mutations. Never infer or
+  propagate joins from `assets.task_id`, upload context, generated-content provenance, or any other
+  workflow context. There is no `campaign_id` on tasks, usage/events, or any table outside
+  `asset_campaigns`; the campaign's optional selected theme belongs only in `campaigns.theme_id`.
 
 **TanStack Query + client state (three-category doctrine):**
 - Server state in TanStack Query. Filter/sort/search state is URL-canonical via nuqs (camelCase params;
@@ -140,7 +148,7 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
   `refetchInterval`: processing 3 s · exports 5 s · delivery status 15 s — all stop on terminal states.
   Constants live in `src/lib/query-config.ts`, never inline.
 - Optimistic-update verb table (closed — new verbs default to server-ack):
-  OPTIMISTIC (onMutate patch + rollback + invalidate on settle): star/unstar, tag/untag.
+  OPTIMISTIC (onMutate patch + rollback + invalidate on settle): star/unstar, theme assign/unassign.
   SERVER-ACK then invalidate: dismiss/mark-triaged, task mark-done, sends, profile edits.
   NEVER optimistic (honest-state doctrine): uploads, processing, exports, consent, deletion, budget state.
 - Global error handling: ONE `QueryCache`/`MutationCache` `onError` in the QueryClient factory —
@@ -188,7 +196,7 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
   FKs `<singular>_id`; timestamps `created_at`/`updated_at` (timestamptz); indexes `idx_<table>_<cols>`;
   enum values snake_case. Two tables deliberately break the generic rules — `acceptance_records` and
   `audit_events` (see Critical Don't-Miss Rules).
-- API: kebab-case plural resource paths (`/api/assets/[assetId]/tags`); camelCase dynamic/query params
+- API: kebab-case plural resource paths (`/api/assets/[assetId]/themes`); camelCase dynamic/query params
   and JSON wire; pgmq queues snake_case (`transcode_jobs`, `export_jobs`, `maintenance_jobs`);
   audit event types dot-notation past tense (`asset.uploaded`).
 
@@ -289,6 +297,8 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 - NO SOFT DELETE anywhere. Deletes are permanent, evidenced by audit events. Never reintroduce
   soft delete "for safety" — a soft-deleted row is lingering personal data. Account deletion is row
   removal; `deleted` is NOT an account_state value.
+- `themes.archived_at` is a lifecycle status flag like `triaged_at`, explicitly NOT soft delete. Themes
+  and campaigns contain no personal data; stable theme rows preserve existing organization links.
 - Triage dismiss is `markTriaged()` — a queue-membership flag (`triaged_at`). It NEVER shares a code
   path with deletion.
 - ONE delete path: `deleteAssets(assetIds, { mode: 'delete' | 'erasure' })` in `src/lib/deletion.ts`,
@@ -317,7 +327,8 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 - `audit_events`: INSERT-only, no `updated_at`, `occurred_at` not `created_at`; references entities by
   `entity_id` + `entity_snapshot` jsonb — NEVER an FK to live rows. Never modified by erasure.
 - The audit registry is CLOSED: `audit.emit()` accepts only the union in `src/shared/audit-events.ts`.
-  Deliberately NOT audited: star/tag/dismiss triage verbs, delivery-status lattice updates, tag CRUD.
+  Deliberately NOT audited: star/theme assign/theme unassign/dismiss triage verbs, delivery-status
+  lattice updates, and theme CRUD.
   Don't add event types ad hoc; don't skip emission where a registry type exists.
 - THE transaction shape — every mutating DAL function:
   `db.transaction(async (tx) => { …mutation…; await audit.emit(tx, …); await jobs.enqueue(tx, …); })`.
@@ -372,22 +383,30 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 
 **Concurrency & triage:**
 - Queue predicate: `triaged_at IS NULL AND processing_status IN ('processing','ready')`, ordered
-  `created_at ASC`. Star/tag endpoints set `triaged_at` server-side as a side effect; library
-  BULK-tags does NOT set `triaged_at` (bulk ops are not triage).
+  `created_at ASC`. Triage intent is route-encoded: only `/api/triage/[assetId]/*` routes set
+  `triaged_at`, in the same transaction as the triage mutation. `/api/assets/[assetId]/themes` and
+  `/api/assets/bulk-themes` are library curation routes and NEVER change `triaged_at`; no client-supplied
+  source flag may select the behavior.
 - Multi-admin model is last-write-wins; `triaged_at` is a shared flag (Z-undo clears it regardless of
   who set it); queue position is per-admin CLIENT state; asset deleted while another admin views it →
   advance with a quiet standard `NOT_FOUND` envelope.
+- Archived themes are excluded from assignment choices and reject every new `asset_themes` insert, but
+  remain available in filters, browse views, and connected-upload views until restored. Archive/restore,
+  assignment, and guarded deletion lock the theme row (`SELECT … FOR UPDATE`) inside a transaction.
+  Theme hard delete succeeds only with zero `asset_themes` connections; otherwise return `CONFLICT`
+  with archive as the remedy. The row lock makes archive-versus-assign and check-versus-delete race-safe.
 
-**v1.1 seams (build the seams, NOT the features):**
+**Versioned seams (build the seams, NOT the features):**
 - `origin` enum is three-valued from day one: `ambassador | admin | generated` — even though nothing
   writes `generated` in MVP. Asset identity anticipates version chains + provenance edges.
-- Tasks/events carry nullable campaign seams; `/auth/confirm` token handling anticipates a `purpose`
-  param; `assets.task_id` (nullable FK) is set at upload-init when the flow enters from a task,
-  validated against an open task addressed to the session user.
+- `/auth/confirm` token handling anticipates a v1.1 `purpose` param. `assets.task_id` (nullable FK) is set
+  at upload-init when the flow enters from a task and is validated against an open task addressed to
+  the session user, but it NEVER writes `asset_themes` or `asset_campaigns`.
 - `tasks.due_at` is nullable and DISPLAY-ONLY (badge + expired-quiet state) — no enforcement, no
   reminders, no effect on the fulfillment KPI.
-- Search is GIN tsvector over description + tag names with the `simple` config (Swedish names don't
-  stem well) — no search engine.
+- Search is a GIN `tsvector` over asset descriptions only with the `simple` config (Swedish descriptions
+  do not stem well). Theme names are a structured, indexed filter/browse join through `asset_themes`,
+  not full-text search. No search engine.
 
 ---
 
@@ -409,4 +428,4 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 - Open items awaiting stakeholder/legal input: UI copy language (EN vs SV), brand typeface + webfont
   license, US-processor legal bar, SMS cap amounts
 
-Last Updated: 2026-07-08
+Last Updated: 2026-07-12

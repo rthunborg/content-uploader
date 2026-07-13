@@ -1,5 +1,5 @@
-# generated: 2026-07-08
-# last_updated: 2026-07-08
+# generated: 2026-07-12
+# last_updated: 2026-07-12
 # project: stena-content-portal
 # project_key: NOKEY
 # tracking_system: file-system
@@ -27,33 +27,39 @@
 #   - optional: Can be completed but not required
 #   - done: Retrospective has been completed
 #
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
 # WORKFLOW NOTES:
 # ===============
 # - Epic transitions to 'in-progress' automatically when first story is created
 # - Stories can be worked in parallel if team capacity allows
-# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
-generated: 2026-07-08
-last_updated: 2026-07-08
+generated: 2026-07-12
+last_updated: 2026-07-12
 project: stena-content-portal
 project_key: NOKEY
 tracking_system: file-system
 story_location: '{project-root}/_bmad-output/implementation-artifacts'
 
 development_status:
-  # ===== Epic 1: Platform Foundation & Passwordless Access (MVP) =====
+  # ===== Epic 1: Platform Foundation & Passwordless Access =====
   epic-1: backlog
   1-1-project-scaffold-eu-pinned-infrastructure: backlog
-  1-2-data-layer-foundation-migrations-account-schema: backlog
+  1-2-data-layer-account-organization-foundation: backlog
   1-3-fleet-deck-design-tokens-themed-component-base: backlog
   1-4-magic-link-authentication-the-single-front-door: backlog
   1-5-dal-choke-point-auth-contexts-role-separation-revocation: backlog
   1-6-audit-event-emitter-registry: backlog
-  1-7-ci-cd-pipeline-eu-observability: backlog
+  1-7-ci-cd-pipeline-error-logging-seam: backlog
   epic-1-retrospective: optional
 
-  # ===== Epic 2: Ambassador Accounts & Lifecycle Management (MVP) =====
+  # ===== Epic 2: Ambassador Accounts & Lifecycle Management =====
   epic-2: backlog
   2-1-ambassador-roster-activity-view: backlog
   2-2-invite-ambassadors-by-email: backlog
@@ -62,7 +68,7 @@ development_status:
   2-5-delete-ambassador-account-record: backlog
   epic-2-retrospective: optional
 
-  # ===== Epic 3: Ambassador Onboarding & Consent (MVP) =====
+  # ===== Epic 3: Ambassador Onboarding & Consent =====
   epic-3: backlog
   3-1-versioned-terms-tamper-evident-acceptance-store: backlog
   3-2-first-login-consent-card-flow: backlog
@@ -70,7 +76,7 @@ development_status:
   3-4-re-accept-on-terms-change: backlog
   epic-3-retrospective: optional
 
-  # ===== Epic 4: Contribution — Upload & Media Processing (MVP) =====
+  # ===== Epic 4: Contribution — Upload & Media Processing =====
   epic-4: backlog
   4-1-upload-staging-atomic-commit-protocol: backlog
   4-2-batch-camera-roll-capture-upload: backlog
@@ -80,7 +86,7 @@ development_status:
   4-6-view-delete-own-uploads: backlog
   epic-4-retrospective: optional
 
-  # ===== Epic 5: Content Requests & Messaging (MVP) =====
+  # ===== Epic 5: Content Requests & Messaging =====
   epic-5: backlog
   5-1-messaging-channel-adapters-delivery-tracking: backlog
   5-2-sms-budget-cap-handling: backlog
@@ -90,17 +96,17 @@ development_status:
   5-6-free-form-messaging-send-suppression: backlog
   epic-5-retrospective: optional
 
-  # ===== Epic 6: Admin Library, Triage & Curation (MVP) =====
+  # ===== Epic 6: Admin Library, Triage & Curation =====
   epic-6: backlog
   6-1-shared-library-browse-media-access: backlog
   6-2-filter-search: backlog
-  6-3-tags-as-folders-with-create-assign-bulk-tagging: backlog
+  6-3-curated-theme-lifecycle-assignment-browse: backlog
   6-4-admin-private-starring: backlog
   6-5-triage-queue: backlog
   6-6-admin-brand-asset-uploads: backlog
   epic-6-retrospective: optional
 
-  # ===== Epic 7: Export, Deletion & Governance (MVP) =====
+  # ===== Epic 7: Export, Deletion & Governance =====
   epic-7: backlog
   7-1-async-zip-export-with-human-readable-filenames: backlog
   7-2-consequence-first-permanent-deletion: backlog
@@ -118,13 +124,19 @@ development_status:
   8-4-used-credit-propagation-to-source-ambassadors: backlog
   epic-8-retrospective: optional
 
-  # ===== Epic 9: Sharing, Usage Tracking, Campaigns & Program Insights (v1.1) =====
+  # ===== Epic 9: Sharing, Usage Tracking & Program Insights (v1.1) =====
   epic-9: backlog
   9-1-linkedin-share-with-caption-share-events: backlog
   9-2-post-export-publish-check-offs: backlog
   9-3-usage-notifications-profile-counters: backlog
-  9-4-campaigns-as-first-class-objects: backlog
-  9-5-tokenized-1-1-deep-link-tasks: backlog
-  9-6-leaderboard: backlog
-  9-7-stats-page-audit-trail-viewer: backlog
+  9-4-tokenized-1-1-deep-link-tasks: backlog
+  9-5-leaderboard: backlog
+  9-6-stats-page-audit-trail-viewer: backlog
   epic-9-retrospective: optional
+
+  # ===== Epic 10: Campaign Calendar (v2) =====
+  epic-10: backlog
+  10-1-admin-only-campaign-calendar-lifecycle: backlog
+  10-2-optional-campaign-theme-explicit-asset-connections: backlog
+  10-3-campaign-reporting-activation: backlog
+  epic-10-retrospective: optional

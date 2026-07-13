@@ -26,7 +26,7 @@ Expected effort: ~15 minutes for a typical ambassador.
 
 ## Process B — Bystander (non-account person) erasure request
 
-1. **Identify affected uploads** — search descriptions and tags (FR24); ask the uploading ambassador(s) if needed.
+1. Identify affected uploads — search upload descriptions, then ask the uploading ambassador(s) to identify any remaining matches. Curated theme names do not contain personal data and must not be used as a person-search surface. The reduced freeform search surface is an accepted consequence of replacing tags with curated themes.
 2. **Delete matches and their generated children** — same warning flow as Process A steps 3–4.
 3. **Respond to the requester** — within the 30-day GDPR deadline, confirming what was removed.
 

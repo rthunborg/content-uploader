@@ -3,11 +3,13 @@ stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 lastStep: 8
 status: 'complete'
 completedAt: '2026-07-07'
+updatedAt: '2026-07-12'
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/ux-design-specification.md
   - _bmad-output/planning-artifacts/consent-cards.md
   - _bmad-output/planning-artifacts/offboarding-erasure-runbook.md
+  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-10.md
 workflowType: 'architecture'
 project_name: 'stena-content-portal'
 user_name: 'Rasmus'
@@ -18,13 +20,15 @@ date: '2026-07-07'
 
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
 
+_Updated 2026-07-12 to incorporate the approved Sprint Change Proposal — Themes and Campaign Seams. The amendment and validation decisions in this document govern over superseded tag/folder and campaign-seam language._
+
 ## Project Context Analysis
 
 ### Requirements Overview
 
 **Functional Requirements:**
 
-48 FRs — 36 MVP (FR1–36), 12 v1.1 (FR37–48) — decomposing into 12 capability areas: Identity & Auth (4), Consent & Account Lifecycle (5), Upload & Ingestion (7), Media Processing (2), Tasks & Messaging (6), Library & Curation (6), Deletion/Export/Offboarding (3), Ambassador Administration (2), Audit & Governance (2), AI Generation & Provenance (5, v1.1), Usage & Social (3, v1.1), Campaigns & Reporting (3, v1.1).
+48 FRs — 36 MVP (FR1–36), 11 v1.1 (FR37–44, FR46–48), and 1 v2 (FR45) — decomposing into 12 capability areas: Identity & Auth (4), Consent & Account Lifecycle (5), Upload & Ingestion (7), Media Processing (2), Tasks & Messaging (6), Library & Curation (6), Deletion/Export/Offboarding (3), Ambassador Administration (2), Audit & Governance (2), AI Generation & Provenance (5, v1.1), Usage & Social (3, v1.1), Campaign Calendar (1, v2).
 
 Roughly half of MVP FRs are plain CRUD. Complexity concentrates in ~10 FRs:
 
@@ -37,7 +41,7 @@ Roughly half of MVP FRs are plain CRUD. Complexity concentrates in ~10 FRs:
 - **FR29/FR33 + NFR11 — complete-erasure orchestration**: one authoritative delete path shared by all three delete surfaces (delete-own, admin delete, offboarding bulk), fanning out across originals, renditions, and derived data.
 - **FR34/FR35 — immutable audit event store** with 6-month auto-expiry job; day-one taxonomy already includes v1.1-only event types (shares, used-confirmations).
 
-**v1.1 requirements demanding MVP design-now provisioning:** the three-value `origin` enum incl. `generated` (FR38); asset identity tolerating version chains and provenance edges (FR39/FR40); a **durable usage/export event store separate from the expiring audit log** (FR41/43/44/47/48 vs FR35 — the sharpest hidden data-model requirement, with deletion-mode-dependent cascade semantics: ordinary deletion preserves historical counters, erasure purges attributions); a dependency-check hook in the delete flow for family-tree warnings (FR40); purpose-scoped magic-link tokens so FR46 deep links become a new purpose value, not a second auth system; campaign linkage seams on tasks/events plus the tags→campaigns migration path (FR45).
+**Post-MVP requirements demanding MVP design-now provisioning:** the three-value `origin` enum incl. `generated` (FR38); asset identity tolerating version chains and provenance edges (FR39/FR40); a **durable usage/export event store separate from the expiring audit log** (FR41/43/44/47/48 vs FR35 — the sharpest hidden data-model requirement, with deletion-mode-dependent cascade semantics: ordinary deletion preserves historical counters, erasure purges attributions); a dependency-check hook in the delete flow for family-tree warnings (FR40); purpose-scoped magic-link tokens so FR46 deep links become a new purpose value, not a second auth system; and dormant `campaigns`/`asset_campaigns` tables for the v2 Campaign Calendar (FR45). Campaign linkage exists only through `asset_campaigns` — never on tasks or usage/event rows.
 
 **Non-Functional Requirements:**
 
@@ -60,7 +64,7 @@ The 20 NFRs cluster onto four load-bearing subsystems; NFR5, NFR15, and NFR18 mo
 ### Technical Constraints & Dependencies
 
 - **EU data residency (NFR9)** filters every provider slot before any other criterion: hosting, DB, object storage, transcoding, email, SMS, backups, logging/monitoring (logs carry actor names), and the v1.1 AI provider. Each provider is a GDPR processor requiring a DPA — the architecture should carry a processor inventory.
-- **No soft delete anywhere** — permanent deletes with audit trail as accountability; dismiss (queue membership) and delete must never share code paths; architecture must not quietly reintroduce soft delete "for safety" (a soft-deleted row is lingering personal data).
+- **No soft delete for personal data or content** — permanent deletes with audit trail as accountability; dismiss (queue membership) and delete must never share code paths; architecture must not quietly reintroduce soft delete "for safety" (a soft-deleted personal/content row is lingering personal data). `themes.archived_at` and `campaigns.archived_at` are explicit lifecycle-status flags on non-personal organization records, not delete mechanisms; hard delete remains a separate operation.
 - **Two roles only**, admin workspace shared/team-wide; enforcement is server-side (NFR8).
 - **Auth floor:** magic-link only, no passwords, no SSO in MVP — but SSO is post-MVP Vision item 16, so the auth boundary should be swap-friendly (link consumption produces a session; SSO would later produce the same session).
 - **Media constraints:** per-type caps (images ≤ 50 MB, video ≤ 2 GB/~5 min, audio/docs ≤ 200 MB) validated client-side before transfer and re-validated server-side; originals preserved bit-exact; HEIC/HEVC conversion in the transcoding step only. The "~5 min" video cap is approximate — pin down whether duration is enforced or advisory.
@@ -91,7 +95,7 @@ The 20 NFRs cluster onto four load-bearing subsystems; NFR5, NFR15, and NFR18 mo
 2. **Admin provisioning + consent-gate scope:** FR1/FR8 say "users"; FR5/consent cards scope consent to ambassadors only. How are admin accounts created, and does the terms gate apply to admin sessions? Needs role-aware gating decision.
 3. **Task due dates/expiry:** TaskCard's "Due" badge and "expired-quiet" state have no FR backing — include a nullable due date in the task model or cut the UX state.
 4. **Task completion semantics:** FR18 mark-done on multi-recipient tasks — one shared state or per-recipient? Affects the fulfillment-metric denominator.
-5. **Multi-admin concurrency:** shared workspace + server-persisted triage state, but no doc defines concurrent triage/tag/delete semantics (live queue shrinkage, per-admin vs global position, undo across admins, delete-while-viewed). Decide the coordination model (last-write-wins is likely sufficient at this scale — but decide it).
+5. **Multi-admin concurrency:** shared workspace + server-persisted triage state, but no doc defines concurrent triage/theme-assignment/delete semantics (live queue shrinkage, per-admin vs global position, undo across admins, delete-while-viewed). Decide the coordination model (last-write-wins is likely sufficient at this scale — but decide it).
 6. **NFR19 internal inconsistency:** NFR19 says SMS **and email** providers must support spending caps; Integration Requirements and FR36 name only SMS (later AI). Resolve whether email caps are a real selection criterion.
 7. **Acceptance records must outlive the account row:** the runbook says account records (incl. acceptance records) are deleted with the account AND that acceptance records are retained as long as content exists — a contradiction. Structural rule: no FK cascade from user to acceptance record; denormalized identity snapshot; retained identity post-deletion needs a documented lawful basis. Second-order: after offboarding + 6 months, deletion audit events expire — is there still erasure evidence?
 8. **Audit actor names vs Art. 17 (UX-flagged):** shape the audit store so actor identity can be pseudonymized without breaking event integrity, pending legal confirmation.
@@ -191,7 +195,7 @@ Hosting topology (Vercel EU + Railway worker), data access (Drizzle + Supavisor 
 Client state (TanStack Query + RSC), URL filter state (nuqs), forms (react-hook-form + Zod v4), virtualization (TanStack Virtual), testing stack (Vitest/Playwright/axe-core), observability (MVP: structured platform logs via `src/shared/logger.ts`; Sentry EU post-MVP), CI/CD (GitHub Actions + Vercel git integration + Railway CLI).
 
 **Deferred Decisions (Post-MVP, with rationale):**
-v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance seams + EU-transfer constraint); LinkedIn share API (v1.1 — start developer-app approval before the v1.1 cycle); CDN (not required at this scale — adding one creates cache-purge/residency obligations); `cacheComponents` (dynamic-by-default is correct for a fully auth-gated app); realtime channels (polling right-sized; revisit only if polling proves insufficient).
+v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance seams + EU-transfer constraint); LinkedIn share API (v1.1 — start developer-app approval before the v1.1 cycle); campaign hard-delete versus archive semantics (consciously deferred to Epic 10 / v2 planning; MVP provisions dormant tables only); CDN (not required at this scale — adding one creates cache-purge/residency obligations); `cacheComponents` (dynamic-by-default is correct for a fully auth-gated app); realtime channels (polling right-sized; revisit only if polling proves insufficient).
 
 ### Data Architecture
 
@@ -199,7 +203,13 @@ v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance s
 - **Migrations:** `drizzle-kit generate` with `out: './supabase/migrations'` and `migrations.prefix: 'supabase'` (verified supported) → applied via Supabase CLI (`supabase migration up` locally, `supabase db push` in CI). Never `drizzle-kit push` against prod. Officially documented workflow on both Supabase and Drizzle sides.
 - **Connections:** from Vercel functions → Supavisor shared pooler **transaction mode, port 6543, `postgres(url, { prepare: false })`** (prepared statements unsupported in transaction mode — verified). From the Railway worker (long-lived) → session pooler or direct connection. Migrations → session/direct only.
 - **Validation:** **Zod 4.4.3** (v4 is current major — note real v3→v4 breaking changes: unified `error` param, top-level `z.email()`, output-typed `.default()`, two-arg `z.record()`, `.issues` not `.errors`) as the single validation layer shared client/server; limits config (per-type size caps) defined once, consumed by client validation and server enforcement.
-- **Data-model laws (from context analysis):** single `assets` table with three-value `origin` enum from day one; acceptance records in their own table with **no FK cascade from users** (identity snapshot denormalized); three retention classes as separate tables/lifecycles (content / audit events with 6-month pg_cron expiry / acceptance records indefinite); durable usage+export event tables separate from audit events; task/event rows carry nullable campaign seams; provenance edges + version chains anticipated in asset identity (v1.1 fills them).
+- **Data-model laws (from context analysis):** single `assets` table with three-value `origin` enum from day one; acceptance records in their own table with **no FK cascade from users** (identity snapshot denormalized); three retention classes as separate tables/lifecycles (content / audit events with 6-month pg_cron expiry / acceptance records indefinite); durable usage+export event tables separate from audit events; provenance edges + version chains anticipated in asset identity (v1.1 fills them). There is **no `campaign_id` on tasks or usage/event rows**; campaign connections exist only in `asset_campaigns`.
+- **Two orthogonal organization axes (approved 2026-07-10):** curated themes are live in MVP; campaigns are dormant v2 seams. The former one-taxonomy “tags as folders” doctrine and `tags`/`asset_tags` tables are removed.
+- **Organization schema (binding):** `themes(id, name, archived_at, created_at, updated_at)` · `asset_themes(asset_id, theme_id, created_at)` · `campaigns(id, name, description, starts_at, ends_at, theme_id NULL REFERENCES themes(id), archived_at, created_at, updated_at)` · `asset_campaigns(asset_id, campaign_id, created_at)`. Both join tables enforce composite uniqueness in asset-first order: `UNIQUE(asset_id, theme_id)` and `UNIQUE(asset_id, campaign_id)`; reverse indexes `(theme_id, asset_id)` and `(campaign_id, asset_id)` support browse/filter access. `campaigns.name` is required for calendar display. The optional `campaigns.theme_id` FK uses `ON DELETE SET NULL`, so a valid theme hard delete cannot be blocked by a dormant campaign reference.
+- **Organization column constraints:** all four table IDs/FKs and both join `created_at` columns are non-null; IDs follow the project UUID-PK convention. `themes.name`, `campaigns.name`, `campaigns.description`, `campaigns.starts_at`, and `campaigns.ends_at` are non-null; each `archived_at` and `campaigns.theme_id` is nullable. `created_at`/`updated_at` are non-null with `now()` defaults and `updated_at` maintained by the owning DAL mutation. Campaigns enforce `ends_at >= starts_at`. Asset-side join FKs cascade on asset hard delete; `asset_themes.theme_id` restricts deletion as a backstop to the guarded DAL. `asset_campaigns.campaign_id` is `RESTRICT` in the dormant MVP schema as a protective integrity default, not a campaign lifecycle decision; Epic 10 may amend it when delete-versus-archive semantics are decided.
+- **Join ownership:** asset-theme and asset-campaign rows are manual-insert-only through explicit admin DAL mutations. `assets.task_id`, upload context, generated-content provenance, and every other workflow context may never infer, propagate, or write either join table. Theme mutation intent is encoded by separate server routes, never a client-supplied source flag: `/api/triage/[assetId]/themes` performs the join mutation and sets `triaged_at` in one transaction; `/api/assets/[assetId]/themes` and `/api/assets/bulk-themes` perform library curation without changing `triaged_at`. Campaign tables have no readers, routes, or UI in MVP.
+- **Theme lifecycle:** `archived_at` is a lifecycle status flag like `triaged_at`, **not soft delete**. Themes and campaigns hold no personal data, while stable rows preserve existing organization links; this is compatible with the no-soft-delete personal-data rule. Archived themes are absent from `ThemePicker` assignment choices and every new `asset_themes` insert rejects an archived theme until it is restored, but they remain queryable in filters, browse views, and connected-upload views. Theme archive/restore, join insertion, and guarded deletion lock the theme row (`SELECT … FOR UPDATE`) inside a transaction so archive-versus-assign and check-versus-delete races cannot violate the rule. Theme hard delete checks `asset_themes` and deletes in that same transaction, succeeding only at zero connections; a connected theme returns `CONFLICT` with archive as the remedy.
+- **Search and filtering (AR17 amended):** the GIN `tsvector` covers asset descriptions only. Theme names are a structured, indexed filter/browse join through `asset_themes`, not full-text search (FR24). Campaign hard-delete versus archive behavior remains deferred to Epic 10 / v2 planning.
 - **Tamper evidence (NFR10 decision):** acceptance records are **INSERT-only (DB grants + trigger) with a per-record HMAC chain** — each record's HMAC covers its fields + previous record's HMAC; key held outside the DB (`ACCEPTANCE_HMAC_KEY`, app + worker env). Chain integrity is verified on schedule by the worker job `verify-acceptance-chain` (pg_cron → `maintenance_jobs` enqueue — Amendment 3), alerting Sentry on failure. PII snapshot columns are encrypted per-user (crypto-shredding — Validation decision 1); Art. 17 erasure deletes the key and appends a signed tombstone record keeping the chain intact. WORM anchoring documented as escalation option, not implemented.
 - **Caching:** none beyond Postgres — Next 16 dynamic-by-default; `cacheComponents` not enabled.
 
@@ -218,12 +228,12 @@ v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance s
 - **API surface:** Next.js server components for reads (initial render) + route handlers for client-interactive mutations and all webhooks; server actions only for simple non-interactive form posts. No separate API tier, no versioning (no external consumers).
 - **Error handling standard:** typed domain errors mapped to the UX soft-edge shape (*what happened / why / remedy*); provider errors normalized at the adapter boundary (never leak raw provider payloads — FR36); Zod validation errors at every boundary.
 - **Async status propagation:** **polling** via TanStack Query `refetchInterval` (transcode processing→ready, export building→ready, delivery statuses). No websockets/SSE — right-sized and revisitable.
-- **Audit emission:** one internal `audit.emit()` module called by every mutating DAL operation **whose action has a type in the closed AUDIT_EVENTS registry** (triage verbs, delivery-status lattice updates, and tag CRUD are deliberately unaudited), in the same transaction; event taxonomy includes v1.1 types (shares, used-confirmations) from day one.
+- **Audit emission:** one internal `audit.emit()` module called by every mutating DAL operation **whose action has a type in the closed AUDIT_EVENTS registry** (triage verbs, delivery-status lattice updates, and theme CRUD are deliberately unaudited), in the same transaction; event taxonomy includes v1.1 types (shares, used-confirmations) from day one.
 - **Messaging dispatch:** channel adapters (Brevo API adapter, 46elks REST adapter) invoked independently per channel with bounded timeouts and per-recipient send records; send-suppression for inactive accounts enforced in the dispatch path; persisted binary SMS budget state (from last 46elks response; 403 "Not enough credits" → flag set, SMS disabled pre-send until balance restored — polled via `/me`).
 
 ### Frontend Architecture
 
-- **State/data:** **@tanstack/react-query 5.101.2** (React 19/Next 16 verified) with RSC prefetch + `HydrationBoundary`; optimistic updates for reversible triage verbs (star/tag), server-reconciled; honest-state doctrine for uploads/processing (no optimistic mutation where state can betray).
+- **State/data:** **@tanstack/react-query 5.101.2** (React 19/Next 16 verified) with RSC prefetch + `HydrationBoundary`; optimistic updates for reversible triage verbs (star and theme assign/unassign), server-reconciled; honest-state doctrine for uploads/processing (no optimistic mutation where state can betray).
 - **URL state:** **nuqs 2.9.0** (`NuqsAdapter` for App Router) — filter combinations URL-canonical, bookmarkable, shareable.
 - **Forms:** **react-hook-form 7.81.0 + @hookform/resolvers 5.4.0 + Zod 4** (dual v3/v4 resolver support verified in source).
 - **Virtualization:** **@tanstack/react-virtual 3.14.5** for GalleryGrid (roving tabindex, aria-rowcount, scroll-restore per UX spec).
@@ -246,7 +256,7 @@ v1.1 AI provider (PRD defers to v1.1 planning; MVP carries only the provenance s
 **Implementation Sequence:**
 
 1. Scaffold (with-supabase example + shadcn `-b radix` + Fleet Deck tokens); Supabase project in eu-north-1; Vercel arn1 + Railway Amsterdam wiring; `src/shared/logger.ts` error-logging seam (Sentry post-MVP).
-2. Data model + migrations (Drizzle): profiles/state machine, terms + acceptance records (INSERT-only + HMAC chain), assets (origin enum), tags, tasks, audit events, usage/export events, send records.
+2. Data model + migrations (Drizzle): profiles/state machine, terms + acceptance records (INSERT-only + HMAC chain), assets (origin enum), themes + asset theme joins, dormant campaigns + asset campaign joins, tasks, audit events, usage/export events, send records.
 3. Auth spine: magic-link flows, proxy.ts (getClaims routing), DAL with getUser + consent gate + role scoping; RLS backstop policies.
 4. Upload pipeline (Uppy→TUS→staging→commit) and transcoding worker (pgmq + ffmpeg 8.1) — the PRD's build-first subsystems.
 5. Library/triage/export; then messaging (Brevo/46elks adapters + webhooks + budget state); audit expiry cron; CI hardening.
@@ -267,7 +277,7 @@ _Draft adversarially reviewed by three critics (missed-conflict-points, contradi
 
 **Database (Postgres via Drizzle, `casing: 'snake_case'` — TS camelCase ↔ DB snake_case):**
 
-- Tables: snake_case plural — `profiles`, `terms_versions`, `acceptance_records`, `assets`, `renditions`, `tags`, `asset_tags`, `tasks`, `task_recipients`, `audit_events`, `usage_events`, `export_records`, `export_items`, `send_records`.
+- Tables: snake_case plural — `profiles`, `terms_versions`, `acceptance_records`, `assets`, `renditions`, `themes`, `asset_themes`, `campaigns`, `asset_campaigns`, `tasks`, `task_recipients`, `audit_events`, `usage_events`, `export_records`, `export_items`, `send_records`.
 - Columns snake_case; PK `id uuid DEFAULT gen_random_uuid()`; FKs `<singular>_id`; timestamps `created_at`/`updated_at` (timestamptz). Indexes `idx_<table>_<cols>`.
 - **Enums: text columns with Drizzle `{ enum: [...] }` + DB CHECK constraint — no `pgEnum`/`CREATE TYPE`** (planned enum growth: `origin` gains `generated` in v1.1). Values snake_case: `origin: ambassador|admin|generated`; `account_state: invited|active|inactive_declined|inactive_withdrawn|deactivated`; `processing_status: pending|processing|ready|failed`; `send_status: queued|sent|delivered|bounced|failed`.
 - **Named exceptions (compliance spine — generic conventions do NOT apply):**
@@ -277,7 +287,7 @@ _Draft adversarially reviewed by three critics (missed-conflict-points, contradi
 
 **API:**
 
-- Route handlers under `app/api` — kebab-case plural resources: `/api/assets`, `/api/assets/[assetId]/tags`; dynamic params camelCase; query params camelCase; JSON wire camelCase; dates ISO-8601 UTC strings.
+- Route handlers under `app/api` — kebab-case plural resources: `/api/assets`, `/api/assets/[assetId]/themes`; dynamic params camelCase; query params camelCase; JSON wire camelCase; dates ISO-8601 UTC strings. Campaign routes do not exist in MVP.
 - Webhooks: `/api/webhooks/brevo`, `/api/webhooks/46elks`.
 - **URL namespaces (route groups do NOT prefix URLs — pin them):** ambassador surface owns the root (`/`, `/tasks`, `/upload`, `/my-uploads`, `/profile` under `(ambassador)/`); admin surface lives under a real `/admin` segment (`/admin`, `/admin/triage`, `/admin/library`, `/admin/ambassadors`, `/admin/exports`). Auth: `/auth/login`, `/auth/confirm` (magic-link verification), `/auth/consent`, `/auth/error` (Amendment 5). **Continuation param is `next` everywhere** (login, consent gate, `emailRedirectTo`) — relative paths only, allow-listed.
 - Media URLs: JSON payloads carry **stable app URLs only** — `/api/assets/[assetId]/file?kind=thumb|preview|original` → DAL access check → 302 to a 60 s signed URL. The browser never mints read URLs.
@@ -323,7 +333,7 @@ supabase/                   # migrations (drizzle-kit output), config.toml
 
 ### Communication Patterns
 
-- **Audit events:** dot-notation `entity.verb`, past tense. **Registry is closed:** all types live in `AUDIT_EVENTS` in `src/shared/audit-events.ts`; `audit.emit()` accepts only that union. MVP taxonomy: `asset.uploaded`, `asset.deleted`, `asset.erased`, `export.created`, `asset.shared` (v1.1 producer), `asset.used_confirmed` (v1.1 producer), `auth.logged_in`, `account.invited`, `account.deactivated`, `account.reactivated`, `account.deleted`, `consent.accepted`, `consent.declined`, `consent.withdrawn`, `terms.version_created`, `task.created`, `task.completed`, `message.sent`. **Explicitly NOT audited:** reversible triage verbs (star/tag/dismiss) — admin-private signals, not compliance events (PRD FR34 taxonomy governs).
+- **Audit events:** dot-notation `entity.verb`, past tense. **Registry is closed:** all types live in `AUDIT_EVENTS` in `src/shared/audit-events.ts`; `audit.emit()` accepts only that union. MVP taxonomy: `asset.uploaded`, `asset.deleted`, `asset.erased`, `export.created`, `asset.shared` (v1.1 producer), `asset.used_confirmed` (v1.1 producer), `auth.logged_in`, `account.invited`, `account.deactivated`, `account.reactivated`, `account.deleted`, `consent.accepted`, `consent.declined`, `consent.withdrawn`, `terms.version_created`, `task.created`, `task.completed`, `message.sent`. **Explicitly NOT audited:** reversible triage verbs (star/theme assign/theme unassign/dismiss) and theme CRUD — admin-private curation state, not compliance events (PRD FR34 taxonomy governs).
 - **Transaction rule (the shape, not just the rule):** every mutating DAL function:
   `db.transaction(async (tx) => { …mutation…; await audit.emit(tx, event); await jobs.enqueue(tx, 'transcode_jobs', payload); })`
   — `audit.emit` and `jobs.enqueue` take the tx handle as first argument (pgmq.send is plain SQL — transactional enqueue works). Calling either with the global client is a violation. **Storage-coupled mutations:** DB rows + audit event commit first; storage operations run after commit; orphaned storage objects are swept by the scheduled orphan-GC job.
@@ -331,7 +341,7 @@ supabase/                   # migrations (drizzle-kit output), config.toml
 - **Webhooks:** verify Brevo signature / 46elks Basic-auth **before parsing**; unverified → 401, no detail. Resolve by `provider_message_id` (UNIQUE per provider); apply a **monotonic status lattice** (never downgrade `delivered`); append raw payload to `raw_events`; return 200 for unknown ids (log via the error-logging seam). Provider-event → canonical `send_status` mapping lives in each channel adapter.
 - **State doctrine (three categories):** server state in TanStack Query; **filter/sort/search state URL-canonical via nuqs** (camelCase params; components read from URL, never useState; query keys derive from parsed URL state); local UI state in components. No global client store; exception: the Uppy instance in a React context provider.
 - **Query conventions:** per-feature key factories (`assetKeys.list(filters)`); default `staleTime` 30 s; polling `refetchInterval`: processing status 3 s, export jobs 5 s, delivery status 15 s — all stop on terminal states; constants in `src/lib/query-config.ts`.
-- **Optimistic-update verb table:** OPTIMISTIC (onMutate patch + rollback + invalidate on settle): star/unstar, tag/untag. SERVER-ACK then invalidate: dismiss/mark-triaged, task mark-done, sends, profile edits. NEVER optimistic (honest-state doctrine): uploads, processing, exports, consent, deletion, budget state. New verbs default to server-ack unless added here.
+- **Optimistic-update verb table:** OPTIMISTIC (onMutate patch + rollback + invalidate on settle): star/unstar, theme assign/unassign. SERVER-ACK then invalidate: dismiss/mark-triaged, task mark-done, sends, profile edits. NEVER optimistic (honest-state doctrine): uploads, processing, exports, consent, deletion, budget state. New verbs default to server-ack unless added here. Bulk theme operations do **not** set `triaged_at`; they are library curation, not triage.
 
 ### Process Patterns
 
@@ -341,7 +351,7 @@ supabase/                   # migrations (drizzle-kit output), config.toml
   3. `systemContext()` — no session; importable only from `app/api/webhooks/` and app cron entries (the worker uses its worker-local context and the shared emitter, passing actor `'system'` — Amendment 2); audit events get `actor_id: null`, `actor_name_snapshot: 'system'`.
 - **Upload contract (NFR13 wire protocol):** buckets `originals` (immutable) + `renditions` (regenerable) + `exports` (regenerable zips, 7-day TTL — Amendment 4), all private. Keys: `assets/{assetId}/original.{ext}` and `assets/{assetId}/{kind}.{ext}`. Staging is a **DB state**: upload-init creates the asset row (`processing_status: 'pending'`, library-invisible) and returns assetId + object key; Uppy TUS metadata = `{ bucketName, objectName, contentType, cacheControl }`, **chunk size exactly 6 MB (Supabase-mandated — never change)**; commit = `POST /api/uploads/[assetId]/commit` — server verifies object existence/size/type, flips status, enqueues `transcode_jobs` in the same transaction. Orphan GC: pg_cron enqueues a daily `maintenance_jobs` message; the worker `orphan-gc` job deletes storage prefixes (S3 API) **and the pending rows** for uploads still `pending` after 24 h (TUS URL TTL), plus a weekly diff-sweep of storage prefixes vs live asset ids (Amendment 3 / Validation decision 9).
 - **Renditions:** own table (`asset_id, kind, storage_path, mime, width, height`). Canonical kinds — image: `thumb` (webp ~400px) + `preview` (webp ~1600px); video: `poster` (jpg) + `thumb` (webp) + `preview` (faststart mp4 720p); audio/doc: none (UI renders type icon). Partial rendition failure = asset `failed` (all-or-nothing).
-- **Deletion:** ONLY via `deleteAssets(assetIds, { mode: 'delete' | 'erasure' })` — `delete` removes originals/renditions/derived + asset rows, **preserves** usage/export event rows (id + snapshot refs); `erasure` (offboarding/Art. 17) additionally purges actor attributions in usage/export events, purges recipient PII in send_records (raw_events scrubbed), force-expires exports-bucket zips referencing erased assets, sweeps the backup replica, and triggers the acceptance-record crypto-shred + tombstone path (full ordered protocol: Validation decision 4). Audit event records the mode. Delete-own and admin-delete = `delete`; offboarding bulk = `erasure`. Triage dismiss is `markTriaged()` — a queue-membership flag (any verb sets `triaged_at`; Z-undo clears it), **never sharing a code path with deletion**.
+- **Deletion:** ONLY via `deleteAssets(assetIds, { mode: 'delete' | 'erasure' })` — `delete` removes originals/renditions/derived + asset rows, **preserves** usage/export event rows (id + snapshot refs); `erasure` (offboarding/Art. 17) additionally purges actor attributions in usage/export events, purges recipient PII in send_records (raw_events scrubbed), force-expires exports-bucket zips referencing erased assets, sweeps the backup replica, and triggers the acceptance-record crypto-shred + tombstone path (full ordered protocol: Validation decision 4). Audit event records the mode. Delete-own and admin-delete = `delete`; offboarding bulk = `erasure`. Triage dismiss is `markTriaged()` — a queue-membership flag (single-asset star/theme/dismiss routes under `/api/triage` set `triaged_at`; Z-undo clears it; `/api/assets/*themes` library mutations do not), **never sharing a code path with deletion**.
 - **Retention classes (per-table law):** content tables — live until deleted, then gone completely · `audit_events` — 6-month pg_cron expiry, **scoped to that single table by name** · `acceptance_records` — indefinite, exempt · `usage_events`/`export_records`/`export_items`/`send_records` — durable, no expiry. _(The UX-spec sentence saying export records expire on the audit schedule is superseded by the step-2/step-4 durable-event-store decision — do not "re-fix".)_
 - **KPI columns (durable, never derived from the expiring audit log):** `profiles.invited_at / first_accepted_at / first_upload_at / last_login_at` (DAL-updated); `tasks.created_at / fulfilled_at`; `task_recipients.completed_at` — **task completion is per-recipient** (each recipient marks their own card done; `tasks.fulfilled_at` = first recipient completion, feeding the 7-day fulfillment KPI). _Resolves Open Question 4._
 - **Export naming:** `src/shared/export-naming.ts` (worker + app both import): slug = lowercase, NFC-normalize, å/ä→a, ö→o, non-alnum→hyphen; date = **Europe/Stockholm calendar date** of upload completion; `nn` = zero-padded sequence per (ambassador, date) within the export, ordered by `created_at`; original extension preserved.
@@ -391,6 +401,7 @@ _Tree verified by two agents: FR-coverage walk (FR1–FR36 → every requirement
 6. **Consent-gate scope (resolves Open Question 2):** the consent cards grant upload/likeness rights — they apply to **ambassadors only**. `requireAdmin()` skips the consent-version gate. Admin accounts are provisioned via `scripts/create-admin.ts` (service-role: sets `app_metadata.admin`, creates profile row); first admin seeded manually at setup.
 7. **Ambassador root:** `/` redirects to `/tasks` (the task list is home per UX bottom-nav).
 8. `src/components/shared/` documented for cross-feature UI (CelebrationMoment).
+9. **Themes and dormant campaign seams (approved Sprint Change Proposal, 2026-07-10):** two orthogonal axes replace the former one-taxonomy tags-as-folders model. Curated themes are live in MVP; campaigns are schema-only until Epic 10 / v2, with no MVP readers, routes, or UI. This supersedes AR11's nullable campaign seams on tasks/events: there is no `campaign_id` on tasks or usage/event rows, and campaign connections exist only in `asset_campaigns`. Both asset joins require explicit admin DAL mutations and can never be populated from upload context or `assets.task_id`. AR17 is amended to description-only full-text search plus structured indexed theme filtering. Campaign hard-delete versus archive behavior is deliberately deferred to Epic 10 / v2 planning.
 
 ### Complete Project Directory Structure
 
@@ -454,13 +465,16 @@ stena-content-portal/
 │   │       ├── assets/route.ts                   # GET list { items, nextCursor }
 │   │       ├── assets/[assetId]/route.ts         # GET (status poll) · PATCH (description) · DELETE (single)
 │   │       ├── assets/[assetId]/file/route.ts    # 302 → 60s signed URL (kind=thumb|preview|original)
-│   │       ├── assets/[assetId]/tags/route.ts    # POST/DELETE single-asset tag ops
+│   │       ├── assets/[assetId]/themes/route.ts  # POST/DELETE library theme assignment; never sets triaged_at
 │   │       ├── assets/bulk-delete/route.ts       # POST { assetIds, mode } → deleteAssets()
-│   │       ├── assets/bulk-tags/route.ts         # POST { assetIds, addTagIds, removeTagIds }
+│   │       ├── assets/bulk-themes/route.ts       # POST { assetIds, addThemeIds, removeThemeIds }; no triaged_at side effect
 │   │       ├── triage/route.ts                   # queue list + verbs (mark-triaged/undo)
+│   │       ├── triage/[assetId]/star/route.ts    # POST/DELETE star + triaged_at in one tx
+│   │       ├── triage/[assetId]/themes/route.ts  # POST/DELETE theme assignment + triaged_at in one tx
 │   │       ├── uploads/init/route.ts             # asset row 'pending'; origin from session role
 │   │       ├── uploads/[assetId]/commit/route.ts # verify → flip visible → enqueue transcode (one tx)
-│   │       ├── tags/route.ts
+│   │       ├── themes/route.ts                   # GET active/all for browse/filter; POST create
+│   │       ├── themes/[themeId]/route.ts         # PATCH/archive/restore; DELETE guarded at zero joins
 │   │       ├── tasks/route.ts  tasks/[taskId]/route.ts        # incl. per-recipient mark-done
 │   │       ├── messages/route.ts                 # send via channel adapters
 │   │       ├── exports/route.ts                  # POST create (size estimate) · GET list
@@ -475,7 +489,7 @@ stena-content-portal/
 │   │   ├── triage/       {dal/admin.ts, components/{triage-queue,keyboard-legend}.tsx, queries/}
 │   │   │                                                    # verbs validate via library/schemas
 │   │   ├── library/      {dal/{ambassador,admin}.ts, components/{gallery-grid,media-preview,
-│   │   │                  filter-rail,tag-picker,selection-bar,consequence-dialog}.tsx,
+│   │   │                  filter-rail,theme-picker,selection-bar,consequence-dialog}.tsx, # picker lists active themes only
 │   │   │                  queries/, schemas/}
 │   │   ├── tasks/        {dal/{ambassador,admin}.ts, components/{task-card,task-compose}.tsx,
 │   │   │                  queries/, schemas/}
@@ -489,8 +503,9 @@ stena-content-portal/
 │   │   └── shared/celebration-moment.tsx
 │   ├── db/
 │   │   ├── client.ts                  # app Drizzle client (DATABASE_URL, prepare:false)
-│   │   └── schema/{profiles,consent,assets,tags,tasks,audit,usage,exports,messaging}.ts + index.ts
+│   │   └── schema/{profiles,consent,assets,themes,campaigns,tasks,audit,usage,exports,messaging}.ts + index.ts
 │   │       # audit.ts = expiring class ONLY; usage.ts/exports.ts/messaging.ts = durable class
+│   │       # campaigns.ts is schema-only in MVP: no readers, route handlers, or UI
 │   ├── lib/
 │   │   ├── auth.ts                    # requireUser / requireAdmin (no consent gate) /
 │   │   │                              # requireUserPreConsent / systemContext (webhooks+cron routes)
@@ -535,11 +550,12 @@ stena-content-portal/
 | Upload & Ingestion (FR9–15) | `features/upload/`, `api/uploads/*`, `db/schema/assets.ts` |
 | Media Processing (FR22–23) | `worker/jobs/transcode.ts`, `db/schema/assets.ts` (processing_status), renditions table |
 | Tasks & Messaging (FR16–20, 36) | `features/tasks/`, `features/messaging/` (+adapters), `api/tasks|messages`, `api/webhooks/*` |
-| Library & Curation (FR21, 24–28) | `features/library/`, `features/triage/`, `api/assets*`, `api/triage`, admin library page (FR28 mount) |
+| Library & Curation (FR21, 24–28) | `features/library/`, `features/triage/`, `api/assets*`, `api/themes*`, `db/schema/themes.ts`, admin library page (FR28 mount) |
 | Deletion/Export/Offboarding (FR29, 30, 33) | `lib/deletion.ts`, `api/assets/bulk-delete`, `features/export/` + `worker/jobs/export-zip.ts` |
 | Ambassador Administration (FR31–32) | `features/ambassadors/`, `api/ambassadors/*`, `scripts/create-admin.ts` |
 | Audit & Governance (FR34–35) | `src/shared/audit{,-events}.ts`, `db/schema/audit.ts`, cron migration (expiry SQL) |
-| v1.1 seams (FR37–48) | schema-only now: origin enum, provenance/version columns, `usage.ts`/`exports.ts` durable events, closed audit taxonomy, purpose param in `/auth/confirm` |
+| v1.1 seams (FR37–44, 46–48) | schema-only now: origin enum, provenance/version columns, `usage.ts`/`exports.ts` durable events, closed audit taxonomy, purpose param in `/auth/confirm` |
+| Campaign Calendar (FR45, v2) | MVP schema seam only: `db/schema/campaigns.ts` with `campaigns` + `asset_campaigns`; no readers, routes, or UI until Epic 10 |
 
 **Cross-cutting:** auth contexts → `lib/auth.ts` consumed by every DAL; audit emission → `shared/audit.ts` (tx-threaded); limits/naming → `src/shared`; KPI columns → `profiles` + `tasks`/`task_recipients` (durable, DAL-updated).
 
@@ -567,7 +583,7 @@ The decision spine is compatible end-to-end (versions re-verified 2026-07-07; on
 
 ### Requirements Coverage Validation ✅
 
-- **FRs:** all 36 MVP FRs have concrete homes (verified by walk); previously-gapped FR8/FR27/FR28/FR29/FR33/FR35 confirmed closed. All 12 v1.1 FRs have named MVP seams. Two last gaps closed here: **FR15** — `assets.task_id` (nullable FK) set by upload-init when the flow enters from a task, validated against an open task addressed to the session user; **FR10** — capture mode (`<input capture>`) explicitly part of the upload feature.
+- **FRs:** all 36 MVP FRs have concrete homes (verified by walk); previously-gapped FR8/FR27/FR28/FR29/FR33/FR35 confirmed closed. All 11 v1.1 FRs have named MVP seams, and the single v2 requirement FR45 has its dormant campaign schema seam. Two last gaps closed here: **FR15** — `assets.task_id` (nullable FK) set by upload-init when the flow enters from a task, validated against an open task addressed to the session user; **FR10** — capture mode (`<input capture>`) explicitly part of the upload feature.
 - **NFRs:** walk verdict was 12 covered / 8 partial / 0 missing; every partial is resolved by a decision below. Standouts confirmed exemplary: NFR8 (role separation), NFR10 (tamper evidence), NFR13 (staging protocol), NFR9/NFR20 (provider selection).
 
 ### Validation Issues Addressed (decisions now binding)
@@ -590,7 +606,7 @@ The decision spine is compatible end-to-end (versions re-verified 2026-07-07; on
 **Triage decisions (probe B):**
 
 10. **Queue predicate:** `triaged_at IS NULL AND processing_status IN ('processing','ready')`, all origins, ordered `created_at ASC`; "new this week" is display copy — untriaged items persist until triaged.
-11. **Star route added:** `POST/DELETE /api/assets/[assetId]/star`. Star/tag endpoints set `triaged_at` server-side as a side effect; the client optimistically patches only star/tag fields and lets queue membership reconcile on invalidate. **Library bulk-tags does NOT set `triaged_at`** (bulk ops are not triage).
+11. **Star and theme-assignment routes:** triage mutations use `POST/DELETE /api/triage/[assetId]/star` and `POST/DELETE /api/triage/[assetId]/themes`; each sets `triaged_at` in the mutation transaction. Library curation uses `POST/DELETE /api/assets/[assetId]/themes` or `/api/assets/bulk-themes` and never sets `triaged_at`. The route namespace is the server-visible intent boundary — no client `source` flag. The client optimistically patches only star/theme fields and lets queue membership reconcile on invalidate. Every join mutation requires explicit admin intent; `assets.task_id` and upload context never write `asset_themes` or `asset_campaigns`.
 12. **OQ5 resolved — multi-admin model declared:** last-write-wins on all triage verbs; `triaged_at` is a shared flag; Z-undo clears it regardless of who set it; queue **position is per-admin client state** (derived cursor, no server position row); an asset deleted while another admin views it advances the queue with a quiet notice (standard `NOT_FOUND` envelope).
 
 **Session/lifecycle decisions (probe C):**
@@ -602,7 +618,7 @@ The decision spine is compatible end-to-end (versions re-verified 2026-07-07; on
 **Remaining NFR closures:**
 
 16. **OQ1/NFR1 resolved:** MVP performance contract adopts the UX reading — notification link → **interactive task list < 3 s on 4G** (literal upload-screen target activates with v1.1 tokenized links; flagged for PRD wording sync). Throttled-4G task-link→upload check added to the e2e plan.
-17. **NFR5 made concrete:** named indexes — `idx_assets_created_at (DESC)`, `idx_assets_uploader_id`, `idx_assets_type`, `idx_assets_triaged_at (partial, WHERE triaged_at IS NULL)`, `idx_asset_tags_tag_id_asset_id`, `idx_send_records_provider_message_id (UNIQUE)`; search = **GIN tsvector over description + tag names** (`simple` config; Swedish names don't stem well).
+17. **NFR5 / AR17 made concrete:** named indexes — `idx_assets_created_at (DESC)`, `idx_assets_uploader_id`, `idx_assets_type`, `idx_assets_triaged_at (partial, WHERE triaged_at IS NULL)`, join uniqueness `UNIQUE(asset_id, theme_id)` / `UNIQUE(asset_id, campaign_id)`, reverse browse indexes `idx_asset_themes_theme_id_asset_id` / `idx_asset_campaigns_campaign_id_asset_id`, and `idx_send_records_provider_message_id (UNIQUE)`; search = **GIN `tsvector` over asset descriptions only** (`simple` config; Swedish descriptions don't stem well). Theme names are resolved through the indexed `asset_themes` join for structured filtering/browsing and are not included in full-text search.
 18. **NFR2 hot path:** the `/api/assets/[id]/file` 302 response for `kind=thumb|preview` sets `Cache-Control: private, max-age=300` so repeat views inside a session skip the auth chain; rendition objects themselves are immutable per (assetId, kind). Accepted residual: first-view latency includes one auth round-trip — within budget on pre-generated renditions.
 19. **OQ6/NFR19 resolved:** Brevo's plan-level daily quota is accepted as the de facto email spending cap; the Brevo adapter maps quota-exceeded responses to `BUDGET_REACHED` exactly like SMS. NFR19's email-cap wording noted as a PRD inconsistency, satisfied in spirit.
 20. **OQ3 resolved:** `tasks.due_at` (nullable) added — display-only (drives the TaskCard "Due" badge and `expired-quiet` state); no enforcement, no reminder semantics, no effect on the fulfillment KPI.
