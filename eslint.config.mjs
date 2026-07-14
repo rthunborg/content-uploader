@@ -103,6 +103,9 @@ export default defineConfig([
               ],
             },
             { regex: "^(?:\\.\\./)+(?:src/)?(?:lib|features|app|components)(?:/|$)" },
+            {
+              regex: "^(?:\\.\\./)+(?:src/)?db(?:$|/(?!schema(?:/|$)))",
+            },
           ],
         },
       ],

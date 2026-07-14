@@ -51,7 +51,7 @@ development_status:
   # ===== Epic 1: Platform Foundation & Passwordless Access =====
   epic-1: in-progress
   1-1-project-scaffold-eu-pinned-infrastructure: done
-  1-2-data-layer-account-organization-foundation: backlog
+  1-2-data-layer-account-organization-foundation: done
   1-3-fleet-deck-design-tokens-themed-component-base: backlog
   1-4-magic-link-authentication-the-single-front-door: backlog
   1-5-dal-choke-point-auth-contexts-role-separation-revocation: backlog

@@ -23,6 +23,7 @@ describe("architectural import boundaries", () => {
     ["worker/jobs/example.ts", 'import { requireUser } from "@/lib/auth";'],
     ["worker/jobs/example.ts", 'import { requireUser } from "../../src/lib/auth";'],
     ["worker/jobs/example.ts", 'import { getDatabase } from "@/db/client";'],
+    ["worker/jobs/example.ts", 'import { getDatabase } from "../../src/db/client";'],
     ["src/features/upload/dal/example.ts", 'import x from "@/features/tasks/dal/admin";'],
     ["src/features/upload/dal/example.ts", 'import x from "../../../tasks/dal/admin";'],
     ["src/app/example/route.ts", 'import { profiles } from "@/db/schema";'],
@@ -54,6 +55,7 @@ describe("architectural import boundaries", () => {
   it.each([
     ["src/shared/example.ts", 'import { logger } from "./logger";'],
     ["worker/jobs/example.ts", 'import { assets } from "@/db/schema";'],
+    ["worker/jobs/example.ts", 'import { assets } from "../../src/db/schema";'],
     ["src/app/example/route.ts", 'import x from "@/features/upload/dal/ambassador";'],
     ["src/features/upload/dal/example.ts", 'import x from "@/features/upload/dal/private";'],
   ])("allows %s importing an approved layer", async (filePath, code) => {

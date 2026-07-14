@@ -2,9 +2,9 @@
 title: 'Story 1.2: Data-layer, account & organization foundation'
 type: 'feature'
 created: '2026-07-14'
-status: 'in-review'
+status: 'done'
 baseline_revision: '0239fed45f61033c31a861b86d22592adb6b2a93'
-final_revision: 'f3908b9d1ba82b46ce86fbff46e974f7250488aa'
+final_revision: '95b211b8e0fdfcc6bc6862ab517671202aae3fb7'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -71,15 +71,12 @@ warnings: [oversized]
 
 ## Review Triage Log
 
-### 2026-07-14 — Review pass (follow-up)
+### 2026-07-14 — Review pass
 - intent_gap: 0
 - bad_spec: 0
-- patch: 2: (high 0, medium 1, low 1)
-- defer: 1
-- reject: 17: (high 0, medium 4, low 13)
-- addressed_findings:
-  - `[medium]` `[patch]` Tightened the worker ESLint boundary to forbid `@/db/client` (the app-only `prepare:false` transaction-pool client — wrong connection mode for the worker) plus `@/app`/`@/components`, while keeping `@/db/schema` allowed; added a boundary test asserting `worker → @/db/client` is rejected.
-  - `[low]` `[patch]` Extended the DAL-bypass ESLint rule from `route.{ts,tsx}` to also cover server components (`page`/`layout`), so pages/layouts can no longer import `@/db` directly and bypass the DAL choke point; added boundary tests for `page.tsx`/`layout.tsx` importing `@/db`.
+- patch: 14: (high 4, medium 6, low 4)
+- defer: 0
+- reject: 15: (high 0, medium 7, low 8)
 - addressed_findings:
   - `[high]` `[patch]` Closed alias, relative-path, and nested-admin import bypasses across worker, route, ambassador, and shared boundaries while preserving legitimate same-feature DAL composition.
   - `[medium]` `[patch]` Made boundary tests identify the intended prohibited import and cover same-feature allowance plus representative relative and nested bypasses.
@@ -93,6 +90,16 @@ warnings: [oversized]
   - `[low]` `[patch]` Added a tracked empty local seed so clean Supabase resets no longer depend on missing-file tolerance.
   - `[low]` `[patch]` Normalized repository metadata for new source/configuration artifacts; Git records them as non-executable despite `/mnt/c` mount-mode reporting.
   - `[high]` `[patch]` Added explicit shared-layer restrictions against app, database, feature, library, and worker dependencies to preserve runtime neutrality.
+
+### 2026-07-14 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 1, low 1)
+- defer: 1
+- reject: 17: (high 0, medium 4, low 13)
+- addressed_findings:
+  - `[medium]` `[patch]` Tightened the worker ESLint boundary to forbid `@/db/client` (the app-only `prepare:false` transaction-pool client — wrong connection mode for the worker) plus `@/app`/`@/components`, while keeping `@/db/schema` allowed; added alias and relative-path boundary tests asserting `worker → @/db/client` is rejected.
+  - `[low]` `[patch]` Extended the DAL-bypass ESLint rule from `route.{ts,tsx}` to also cover server components (`page`/`layout`), so pages/layouts can no longer import `@/db` directly and bypass the DAL choke point; added boundary tests for `page.tsx`/`layout.tsx` importing `@/db`.
 
 ## Design Notes
 
