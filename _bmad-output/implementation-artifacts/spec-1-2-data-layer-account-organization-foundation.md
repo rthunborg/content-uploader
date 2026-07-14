@@ -2,11 +2,11 @@
 title: 'Story 1.2: Data-layer, account & organization foundation'
 type: 'feature'
 created: '2026-07-14'
-status: 'done'
+status: 'in-review'
 baseline_revision: '0239fed45f61033c31a861b86d22592adb6b2a93'
 final_revision: 'f3908b9d1ba82b46ce86fbff46e974f7250488aa'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '/mnt/c/stena-content-portal/_bmad-output/project-context.md'
 warnings: [oversized]
@@ -71,12 +71,15 @@ warnings: [oversized]
 
 ## Review Triage Log
 
-### 2026-07-14 — Review pass
+### 2026-07-14 — Review pass (follow-up)
 - intent_gap: 0
 - bad_spec: 0
-- patch: 14: (high 4, medium 6, low 4)
-- defer: 0
-- reject: 15: (high 0, medium 7, low 8)
+- patch: 2: (high 0, medium 1, low 1)
+- defer: 1
+- reject: 17: (high 0, medium 4, low 13)
+- addressed_findings:
+  - `[medium]` `[patch]` Tightened the worker ESLint boundary to forbid `@/db/client` (the app-only `prepare:false` transaction-pool client — wrong connection mode for the worker) plus `@/app`/`@/components`, while keeping `@/db/schema` allowed; added a boundary test asserting `worker → @/db/client` is rejected.
+  - `[low]` `[patch]` Extended the DAL-bypass ESLint rule from `route.{ts,tsx}` to also cover server components (`page`/`layout`), so pages/layouts can no longer import `@/db` directly and bypass the DAL choke point; added boundary tests for `page.tsx`/`layout.tsx` importing `@/db`.
 - addressed_findings:
   - `[high]` `[patch]` Closed alias, relative-path, and nested-admin import bypasses across worker, route, ambassador, and shared boundaries while preserving legitimate same-feature DAL composition.
   - `[medium]` `[patch]` Made boundary tests identify the intended prohibited import and cover same-feature allowance plus representative relative and nested bypasses.
@@ -126,3 +129,21 @@ Verification performed:
 - `git diff --check` passed apart from WSL LF-to-CRLF notices; no `pgEnum` exists and `campaignId` appears only in the campaign-owned join schema.
 
 Residual risks: The `auth.users` profile FK, RLS enablement, comments, and privilege revocations are deliberate SQL additions after Drizzle generation because Drizzle owns only the public schema snapshot; migration application verifies this backstop. Live database tests require the explicit local Supabase verification command and are intentionally skipped by the pure default unit command. The `/mnt/c` mount reports broad filesystem modes, while Git records the reviewed files as non-executable.
+
+### Follow-up review pass — 2026-07-14
+
+Trigger: fresh review pass over the completed story (status `done` → re-review).
+
+Four adversarial layers (blind adversarial, edge-case hunter, verification-gap, intent-alignment) ran in parallel against the full since-baseline diff. Triage: 2 patch, 1 defer, 17 reject; no intent_gap, no bad_spec.
+
+Patches applied (both in `eslint.config.mjs` + `eslint-boundaries.test.ts`):
+- Worker import boundary now forbids `@/db/client` (app-only transaction-pool client with the wrong connection mode for the worker) and `@/app`/`@/components`, while `@/db/schema` stays allowed — closing the gap where a `worker/` module could silently acquire the app's `prepare:false` pooler client with lint green.
+- DAL-bypass rule extended from `route.{ts,tsx}` to `{route,page,layout}.{ts,tsx}`, so server components can no longer import `@/db` directly and bypass the DAL compliance choke point.
+
+Deferred (1 new ledger entry): no fast-gate (DB-less) schema-config unit tests for the organization tables' FK on-delete actions and CHECK/uniqueness constraints — currently proven only by the env-gated integration suite; mirroring the `profiles.test.ts` `getTableConfig` pattern would catch schema regressions in the default `npm test`.
+
+Rejected (representative): RLS/auth-FK/REVOKE living in the generated SQL rather than the Drizzle snapshot, and the live matrix skipping by default, are both deliberate and spec-acknowledged (project doctrine: `supabase/migrations/` is the source of truth; the Verification section mandates the explicit local-Supabase command; CI hardening is a later story). datetime null/non-ISO and `getHttpStatus` unmapped-code findings are guarded by TypeScript strict typing. `assets` `origin`/`task_id` and campaign date columns are explicitly deferred/expected seams.
+
+Verification performed this pass: `npm run typecheck` clean; `npm run lint` clean; `npm test` → 97 passed, 5 live-database tests skipped without `TEST_DATABASE_URL` (boundary suite now covers the two newly-enforced restrictions); `git diff --check` clean apart from WSL LF→CRLF notices; no `pgEnum` in `src/db/schema`. Schema, migration, and runtime code were untouched, so the live-Supabase matrix and build are unaffected by this pass.
+
+Follow-up review recommendation: false — this pass patched 0 high, 1 medium, 1 low; score `3 × 1 + 1 × 1 = 4` (< 5).

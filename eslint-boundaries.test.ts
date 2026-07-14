@@ -22,10 +22,13 @@ describe("architectural import boundaries", () => {
     ["src/shared/example.ts", 'import x from "@/features/upload/dal/ambassador";'],
     ["worker/jobs/example.ts", 'import { requireUser } from "@/lib/auth";'],
     ["worker/jobs/example.ts", 'import { requireUser } from "../../src/lib/auth";'],
+    ["worker/jobs/example.ts", 'import { getDatabase } from "@/db/client";'],
     ["src/features/upload/dal/example.ts", 'import x from "@/features/tasks/dal/admin";'],
     ["src/features/upload/dal/example.ts", 'import x from "../../../tasks/dal/admin";'],
     ["src/app/example/route.ts", 'import { profiles } from "@/db/schema";'],
     ["src/app/example/route.ts", 'import { profiles } from "../../db/schema";'],
+    ["src/app/example/page.tsx", 'import { profiles } from "@/db/schema";'],
+    ["src/app/example/layout.tsx", 'import { getDatabase } from "@/db/client";'],
     [
       "src/app/(ambassador)/example/page.tsx",
       'import x from "@/features/ambassadors/dal/admin";',

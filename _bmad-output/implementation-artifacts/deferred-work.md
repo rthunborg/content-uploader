@@ -1,0 +1,5 @@
+# Deferred Work Ledger
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-data-layer-account-organization-foundation.md`
+  summary: The organization tables (campaigns, themes, asset_themes, asset_campaigns) have no fast-gate (DB-less) schema-config unit tests asserting their FK on-delete actions and CHECK/uniqueness constraints, unlike profiles which asserts its account-state check via getTableConfig.
+  evidence: profiles.test.ts asserts the `profiles_account_state_check` name through `getTableConfig`, but campaigns/themes/join tables have no co-located unit test; the FK on-delete actions (theme_id `set null`, campaign_id/theme_id `restrict`, asset_id `cascade`), the `campaigns_date_order_check`, and `themes_name_unique` are verified only inside `organization.integration.test.ts`, which is `describe.skip` unless `TEST_DATABASE_URL` is set and no CI wires it. A schema regression (e.g. flipping an on-delete action or reintroducing `deleted`) would ship green under the default `npm test`. Mirroring the profiles getTableConfig pattern would catch schema-level regressions in the fast gate.

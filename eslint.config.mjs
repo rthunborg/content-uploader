@@ -84,8 +84,25 @@ export default defineConfig([
         "error",
         {
           patterns: [
-            { group: ["@/lib", "@/lib/*", "@/features", "@/features/*"] },
-            { regex: "^(?:\\.\\./)+(?:src/)?(?:lib|features)(?:/|$)" },
+            {
+              // Worker may import ONLY @/db/schema (of @/db), @/shared, and worker/lib.
+              // @/db/client is the app-only transaction-pool client (wrong connection
+              // mode for the worker), so it is forbidden explicitly while @/db/schema
+              // stays allowed; @/app, @/components, @/lib, @/features are also off-limits.
+              group: [
+                "@/app",
+                "@/app/*",
+                "@/components",
+                "@/components/*",
+                "@/lib",
+                "@/lib/*",
+                "@/features",
+                "@/features/*",
+                "@/db/client",
+                "@/db/client/*",
+              ],
+            },
+            { regex: "^(?:\\.\\./)+(?:src/)?(?:lib|features|app|components)(?:/|$)" },
           ],
         },
       ],
@@ -93,7 +110,10 @@ export default defineConfig([
   },
   ...featureDalBoundaries,
   {
-    files: ["src/app/**/route.{ts,tsx}"],
+    // Route handlers AND server components (page/layout) compose features and read
+    // through the DAL/query layer — never @/db directly. The DAL is the compliance
+    // choke point, so bypassing it from the app layer is a boundary violation.
+    files: ["src/app/**/{route,page,layout}.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "error",
