@@ -18,6 +18,17 @@ describe("local Supabase email authentication contract", () => {
   });
 
   it.each([
+    ["invite", "./supabase/templates/invite.html"],
+    ["magic_link", "./supabase/templates/magic_link.html"],
+  ])("wires the %s email through the custom token-hash template", (name, path) => {
+    expect(config).toMatch(
+      new RegExp(
+        `\\[auth\\.email\\.template\\.${name}\\][\\s\\S]*?content_path = "${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+      ),
+    );
+  });
+
+  it.each([
     ["magiclink", magicLink],
     ["invite", invite],
   ])("routes %s token hashes through the single confirmation endpoint", (type, template) => {

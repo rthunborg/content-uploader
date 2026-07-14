@@ -6,7 +6,7 @@ status: 'done'
 baseline_revision: '9aa936520e8f90ce45797a2877207c06989d2335'
 final_revision: '0431153bd807f844c18c837ac777a376fbd053ea'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '/mnt/c/stena-content-portal/_bmad-output/project-context.md'
 warnings: [oversized]
@@ -75,6 +75,21 @@ warnings: [oversized]
 
 ## Review Triage Log
 
+### 2026-07-14 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3: (high 0, medium 0, low 3)
+- defer: 3
+- reject: 13: (high 0, medium 0, low 13)
+- addressed_findings:
+  - `[low]` `[patch]` Pinned the config→template wiring in `supabase/auth-config.test.ts` so a removal of the `[auth.email.template.magic_link]`/`[auth.email.template.invite]` blocks (which would silently revert emails to Supabase's default `ConfirmationURL` flow and bypass `/auth/confirm`) fails the unit suite instead of only the manual e2e.
+  - `[low]` `[patch]` Extended Vitest's default `exclude` (`[...configDefaults.exclude, "e2e/**"]`) in `vitest.config.ts` so overriding it no longer drops the built-in `dist`/`.git`/`.cache`/nested-`node_modules` exclusions.
+  - `[low]` `[patch]` Required `MAILPIT_URL` explicitly in `e2e/fixtures/auth.ts` with a clear message, removing the non-functional `INBUCKET_URL` fallback that passed the presence guard but then 404s against the Mailpit-only REST API.
+- deferred_findings (appended to deferred-work ledger as new entries):
+  - Login request discloses account existence (existing user → `linkSent`, `signInWithOtp` error → `requestFailed`); pre-existing request path, not modified by this diff.
+  - Invite template (`invite.html`) assumes `.RedirectTo` carries a query string; a query-less admin invite `redirectTo` yields a malformed link that never reaches `/auth/confirm`.
+  - No automated/CI execution path for the e2e suite (excluded from Vitest, requires manual `supabase start`), so single-use/expiry/accessible-recovery guarantees can regress undetected in the default test run.
+
 ### 2026-07-14 — Review pass
 - intent_gap: 0
 - bad_spec: 0
@@ -118,8 +133,15 @@ Files changed:
 - `package.json`, `package-lock.json` -- add the exactly pinned axe Playwright integration and E2E command support.
 - `docs/infrastructure-verification.md` -- record hosted Supabase/Brevo settings that repository config cannot apply.
 
-Review findings breakdown: patch 9 (high 0, medium 3, low 6); defer 0; reject 12 (high 0, medium 5, low 7). Follow-up review recommendation: true; patched-severity score is `3 × 3 + 1 × 6 = 15`.
+Review findings breakdown (initial pass): patch 9 (high 0, medium 3, low 6); defer 0; reject 12 (high 0, medium 5, low 7).
 
-Verification performed: typecheck and lint passed; Vitest passed 132 tests with 5 environment-dependent database tests skipped; production build passed; local Supabase accepted the auth configuration/templates; Playwright magic-link suite passed 3/3 journeys including login, invitation, single-use recovery, unauthenticated failure state, keyboard/target checks, and axe; `git diff --check` passed with line-ending notices only.
+Follow-up review pass (2026-07-14): intent_gap 0; bad_spec 0; patch 3 (high 0, medium 0, low 3); defer 3; reject 13 (high 0, medium 0, low 13). Follow-up review recommendation: false; patched-severity score is `3 × 0 + 1 × 3 = 3`. Patches applied this pass:
+- Pinned the `[auth.email.template.magic_link]`/`[auth.email.template.invite]` config→template wiring in `supabase/auth-config.test.ts` so a silent revert to Supabase's default `ConfirmationURL` flow fails the fast unit gate rather than only the manual e2e.
+- Extended Vitest's default `exclude` in `vitest.config.ts` (`[...configDefaults.exclude, "e2e/**"]`) instead of replacing it, restoring the built-in `dist`/`.git`/`.cache`/nested-`node_modules` exclusions.
+- Required `MAILPIT_URL` explicitly in `e2e/fixtures/auth.ts`, removing the non-functional `INBUCKET_URL` fallback that passed the presence guard but 404s against the Mailpit-only REST API.
 
-Residual risk: hosted Supabase dashboard settings, redirect origins, and Brevo SMTP remain operational deployment state and are documented for environment verification; elapsed-wall-clock 15-minute expiry is configuration-tested rather than making the suite wait 15 minutes.
+Three findings were deferred to `deferred-work.md` as new entries: login-request account-enumeration disclosure (pre-existing request path), invite-template robustness for query-less `redirectTo` (invite onboarding owned by later stories), and the absence of an automated/CI execution path for the e2e-only guarantees (single-use, expiry, recovery-CTA accessibility).
+
+Verification performed (follow-up pass): typecheck and lint passed; Vitest passed 134 tests (up from 132; +2 config-wiring assertions) with 5 environment-dependent database tests skipped; production build passed; auth-surface grep found no password/signup implementation; `git diff --check` passed with line-ending notices only. The Playwright magic-link suite (3/3 journeys, previously green) was not re-run in this pass as it requires a live local Supabase stack and is outside the default gate; the patches touch only test-harness wiring and a config-contract assertion, not e2e runtime behavior.
+
+Residual risk: hosted Supabase dashboard settings, redirect origins, and Brevo SMTP remain operational deployment state and are documented for environment verification; elapsed-wall-clock 15-minute expiry is configuration-tested rather than making the suite wait 15 minutes; the three deferred items above remain open in the ledger for later focused attention.

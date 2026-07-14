@@ -36,15 +36,17 @@ function statusEnvironment() {
       throw new Error(`Supabase status did not provide required ${key} for auth E2E.`);
     }
   }
-  if (!parsed.MAILPIT_URL && !parsed.INBUCKET_URL) {
-    throw new Error("Supabase status did not provide MAILPIT_URL or INBUCKET_URL for auth E2E.");
+  if (!parsed.MAILPIT_URL) {
+    throw new Error(
+      "Supabase status did not provide MAILPIT_URL; the auth E2E helpers use the Mailpit REST API and require a Mailpit-backed local stack.",
+    );
   }
   return parsed;
 }
 
 const env = statusEnvironment();
 const apiUrl = env.API_URL;
-const mailUrl = env.MAILPIT_URL ?? env.INBUCKET_URL;
+const mailUrl = env.MAILPIT_URL;
 
 async function mailpit(path: string, init?: RequestInit) {
   let response: Response;
