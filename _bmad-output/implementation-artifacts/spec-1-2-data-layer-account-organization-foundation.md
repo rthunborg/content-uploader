@@ -2,8 +2,9 @@
 title: 'Story 1.2: Data-layer, account & organization foundation'
 type: 'feature'
 created: '2026-07-14'
-status: 'in-review'
+status: 'done'
 baseline_revision: '0239fed45f61033c31a861b86d22592adb6b2a93'
+final_revision: 'f3908b9d1ba82b46ce86fbff46e974f7250488aa'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
