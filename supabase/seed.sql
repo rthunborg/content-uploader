@@ -1,0 +1,1 @@
+-- Intentionally empty: foundation stories define schema only; later stories own development fixtures.
