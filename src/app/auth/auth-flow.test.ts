@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { logError } = vi.hoisted(() => ({ logError: vi.fn() }));
+
+vi.mock("@/shared/logger", () => ({ logError }));
 
 import {
   buildConfirmationUrl,
@@ -7,6 +11,8 @@ import {
 } from "./auth-flow";
 
 describe("email-link authentication flow", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("requests one magic link without creating an account", async () => {
     const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
 
@@ -43,6 +49,12 @@ describe("email-link authentication flow", () => {
       message:
         "Länken kunde inte skickas just nu. Försök igen om en liten stund.",
     });
+    expect(logError).toHaveBeenCalledWith(
+      "auth.magic_link_request_failed",
+      expect.objectContaining({ message: "Provider request failed" }),
+      { operation: "signInWithOtp" },
+    );
+    expect(JSON.stringify(logError.mock.calls)).not.toContain("provider secret detail");
   });
 
   it("returns Swedish safe copy when the provider rejects", async () => {
@@ -58,6 +70,12 @@ describe("email-link authentication flow", () => {
       ok: false,
       message: "Länken kunde inte skickas just nu. Försök igen om en liten stund.",
     });
+    expect(logError).toHaveBeenCalledWith(
+      "auth.magic_link_request_failed",
+      expect.objectContaining({ message: "Provider request rejected" }),
+      { operation: "signInWithOtp" },
+    );
+    expect(JSON.stringify(logError.mock.calls)).not.toContain("secret rejection");
   });
 
   it("builds confirmation URLs with a safe continuation", () => {

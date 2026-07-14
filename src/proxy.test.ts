@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase/env", () => ({
   publicSupabaseEnvironment: () => ({ url: "https://supabase.invalid", publishableKey: "public" }),
 }));
 
-import { authRedirectFor, proxy } from "./proxy";
+import { authRedirectFor, config, proxy } from "./proxy";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -19,6 +19,19 @@ beforeEach(() => {
 });
 
 describe("proxy route gate", () => {
+  it("excludes only known framework assets and the exact favicon path", () => {
+    expect(config.matcher).toEqual([
+      "/((?!_next/static|_next/image|favicon\\.ico$).*)",
+    ]);
+    expect(config.matcher[0]).not.toContain("svg|png|jpg|jpeg|gif|webp");
+  });
+
+  it("keeps image-like application paths behind the auth gate", () => {
+    expect(authRedirectFor("/library/private.png", "", false)).toBe(
+      "/auth/login?next=%2F",
+    );
+  });
+
   it.each(["/auth/login", "/auth/confirm"])(
     "keeps the public auth route public: %s",
     (pathname) => {

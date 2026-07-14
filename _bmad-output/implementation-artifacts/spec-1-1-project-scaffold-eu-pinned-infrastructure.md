@@ -4,9 +4,9 @@ type: 'feature'
 created: '2026-07-13'
 status: done
 baseline_revision: '4cefd5735814af4e72790321ff9c6747dc1428d4'
-final_revision: '6004fa9dd07884ac3a7245a858d3663a8895690e'
+final_revision: '330b08bf5d94a290434d3d31dc7a33c80f5b6ef3'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '/mnt/c/stena-content-portal/_bmad-output/project-context.md'
   - '/mnt/c/stena-content-portal/_bmad-output/planning-artifacts/launch-decisions.md'
@@ -79,6 +79,43 @@ warnings: [oversized]
 
 ## Review Triage Log
 
+### 2026-07-14 — Follow-up review pass (2)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 1, low 1)
+- defer: 0
+- reject: 19: (high 0, medium 3, low 16)
+- addressed_findings:
+  - `[medium]` `[patch]` Added an executable assertion that `vercel.json` pins Vercel functions to `arn1` (Stockholm), closing the EU-region-drift regression gap the existing robots test left unguarded (the test read `vercel.json` but asserted only its headers, so flipping `regions` to a non-EU value passed every gate).
+  - `[low]` `[patch]` Generalized the logger's credentialed-URL redaction from postgres-only to any URL scheme with embedded userinfo (`scheme://user:pass@…`), with regression coverage; existing postgres redaction is a strict subset and remains covered.
+- reject_rationale: Rejections were dominated by (a) later-story scope the intent explicitly defers — import-boundary lint, worker graceful shutdown, dark-theme tokens (Story 1.3), functional `db:*`/`e2e` implementations (intent mandates the script *names* only); (b) platform/provider-backstopped items — `x-forwarded-host` trust is normalized by Vercel and the magic-link `emailRedirectTo` is bounded by Supabase's server-side redirect allow-list, and multi-value forwarded headers are single-valued on the platform; (c) verification framed by the spec as Docker/dashboard evidence rather than unit tests — worker Node/ffmpeg version and Railway region checks; and (d) deliberate, previously-reviewed design — redundant noindex mechanisms, fail-closed proxy behavior, the narrowed proxy matcher, and the structured `critical` level as an external-alerting seam.
+
+### 2026-07-14 — Full-diff review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 6: (high 0, medium 5, low 1)
+- defer: 0
+- reject: 15: (high 0, medium 10, low 5)
+- addressed_findings:
+  - `[medium]` `[patch]` Logged resolved magic-link provider failures through the generic structured event path without exposing provider details, with regression coverage.
+  - `[medium]` `[patch]` Narrowed the proxy matcher to known framework assets so extension-shaped application routes remain protected, with matcher coverage.
+  - `[medium]` `[patch]` Expanded common credential-key redaction while preserving useful diagnostics, with focused secret-safety tests.
+  - `[low]` `[patch]` Switched logger cycle detection from global visitation to the active recursion path so shared non-cyclic references retain their diagnostic value.
+  - `[medium]` `[patch]` Added direct environment, browser-client, and server-client contract tests for the real Supabase factory boundaries.
+  - `[medium]` `[patch]` Added executable global robots-header configuration coverage and made pending Brevo/46elks evidence explicitly production-blocking in the processor inventory.
+
+### 2026-07-14 — Follow-up review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4: (high 1, medium 2, low 1)
+- defer: 0
+- reject: 10: (high 0, medium 6, low 4)
+- addressed_findings:
+  - `[high]` `[patch]` Restored the pre-implementation baseline so the follow-up adversarial review covers the application, worker, deployment, and verification changes rather than bookkeeping only.
+  - `[medium]` `[patch]` Repaired the invalid recorded implementation revision to the actual commit object `6004fa9b9cdf2a83cfd30b6d473c3e4ec50b1ab7`.
+  - `[medium]` `[patch]` Synchronized Epic 1 to `in-progress` now that its first story is complete.
+  - `[low]` `[patch]` Refreshed the sprint tracker's last-updated date for the Story 1.1 completion transition.
+
 ### 2026-07-14 — Review pass
 - intent_gap: 0
 - bad_spec: 0
@@ -120,36 +157,53 @@ The authoritative production Supabase target is project `utohxfcfjmhypejrawmy` i
 
 Status: done
 
-Summary: Materialized the pinned Next.js 16/Supabase scaffold, passwordless private-route shell, Radix-backed shadcn baseline, runtime-neutral structured logging, Stockholm Vercel configuration, Railway-compatible Node 22/ffmpeg 8.1.2 worker image, and EU processor/placement evidence gates. Review hardening added direct authentication-boundary tests, safe provider-failure handling, non-throwing secret-safe logging, and missing provider verification procedures.
+Summary: Follow-up review pass (2) over the full Story 1.1 diff (`4cefd57`..HEAD, lockfile excluded as noise). Four adversarial layers (blind-hunter, edge-case-hunter, verification-gap, intent-alignment) ran in parallel; every finding was verified against the actual code before triage. Two patches were applied — an executable EU-region assertion and a broader logger secret-redaction pattern; all other findings were rejected as later-story scope, platform/provider-backstopped, Docker/dashboard-evidenced by spec design, or deliberate previously-reviewed design. No new intent gaps or spec defects surfaced; nothing was deferred.
+
+### Follow-up review pass (2) — 2026-07-14
+
+Patches applied this pass (2):
+- `src/app/robots-config.test.ts` — asserts `vercel.json` `regions` equals `["arn1"]`, so a silent flip to a non-EU region now fails the local suite instead of passing every gate (the central EU-pinning invariant was previously unguarded by any test).
+- `src/shared/logger.ts` + `src/shared/logger.test.ts` — credentialed-URL redaction generalized from postgres-only to any `scheme://user:pass@…`, with regression coverage; postgres redaction remains a strict subset.
+
+Review findings breakdown: patch 2 (high 0, medium 1, low 1); intent_gap 0; bad_spec 0; defer 0; reject 19 (high 0, medium 3, low 16). Follow-up review recommendation: false (patched high 0; weighted score 3×1 + 1×1 = 4 < 5).
+
+Verification performed this pass:
+- `npm run typecheck` — passed (clean).
+- `npm run lint` — passed (clean).
+- `npm test` — passed; 10 test files, 66 tests (up from 64 with the two added cases).
+- `npm run build` — passed; only `/auth/login` and `/auth/confirm` are exposed application routes.
+- Password/Sentry forbidden-symbol scan (`grep`) — passed with no implementation matches.
+- Docker worker build/run, `npx vercel@latest build`, and `npx shadcn@4.13.0 info` were not re-run this pass: the patches are test-only plus a one-line logger regex and do not touch the worker image, Vercel build contract, or shadcn/Tailwind configuration, all recorded passing in the prior pass below.
+
+Residual risks unchanged from prior pass: the 900-second Supabase OTP setting, Brevo EU placement, 46elks EU processing evidence, and deployed Vercel/Railway placement remain explicit production-launch gates in `docs/infrastructure-verification.md`. Notably, EU-region pinning is now guarded in code only for Vercel (`vercel.json` `regions`); Supabase and Railway placement remain dashboard/CLI-evidence gates by spec design, not executable assertions.
+
+---
+
+### Follow-up review pass (1) — 2026-07-14
+
+Summary: Re-ran and hardened the existing Story 1.1 scaffold across its passwordless auth boundary, private-route proxy, structured logging seam, Supabase client factories, EU processor evidence, app/worker build contracts, and workflow tracking. The follow-up review now covers the full implementation from the pre-scaffold baseline.
 
 Files changed:
-- `.dockerignore`, `.env.example` -- exclude local secrets/build output and define the credential-free environment canon.
-- `package.json`, `package-lock.json` -- pin the runtime/toolchain, canonical scripts, and vulnerability-free dependency graph.
-- `tsconfig.json`, `eslint.config.mjs`, `vitest.config.ts`, `postcss.config.mjs`, `next-env.d.ts` -- strict TypeScript, lint, test, Tailwind, and Next.js scaffold configuration.
-- `next.config.ts`, `vercel.json` -- global noindex headers and Stockholm `arn1` placement.
-- `components.json`, `src/app/globals.css`, `src/components/ui/button.tsx`, `src/lib/utils.ts` -- Radix shadcn initialization and Fleet Deck placeholder tokens.
-- `src/app/layout.tsx` -- Swedish root metadata and robots policy.
-- `src/app/auth/**` -- passwordless login, token confirmation, safe recovery behavior, and direct boundary tests.
-- `src/lib/auth/**` -- allow-listed relative continuation handling and tests.
-- `src/lib/supabase/**` -- current browser/server SSR client factories and public environment validation.
-- `src/proxy.ts`, `src/proxy.test.ts` -- private-route claims gate, safe failure behavior, cookie propagation, and direct tests.
-- `src/shared/logger.ts`, `src/shared/logger.test.ts` -- runtime-neutral, non-throwing, secret-safe structured logging and hostile-input coverage.
-- `worker/Dockerfile`, `worker/index.ts` -- Railway-compatible Node 22 and ffmpeg 8.1.2 worker shell.
-- `docs/processor-inventory.md`, `docs/infrastructure-verification.md` -- EU processor inventory, placement evidence, and authoritative verification gates.
-- `_bmad-output/implementation-artifacts/epic-1-context.md` -- compiled Epic 1 continuity context.
+- Application scaffold and configuration (`package*.json`, TypeScript/ESLint/Vitest/Tailwind/Next/shadcn configuration, `src/app/**`, `public/**`) -- retain the pinned Next.js 16.2/React 19.2 App Router and Fleet Deck placeholder baseline.
+- Authentication and routing (`src/app/auth/**`, `src/lib/auth/**`, `src/lib/supabase/**`, `src/proxy*`) -- provide magic-link-only login, safe confirmation/continuation behavior, private-route gating, generic provider-failure logging, and direct factory/config regression tests.
+- Runtime logging (`src/shared/logger*`) -- provide runtime-neutral structured output with broader credential redaction, non-throwing hostile-input handling, and correct recursion-path cycle detection.
+- Infrastructure (`worker/**`, `.dockerignore`, `.env.example`, `vercel.json`) -- retain the Node 22/ffmpeg 8.1.2 Railway shell, credential-free environment canon, global noindex policy, and Stockholm Vercel placement.
+- Evidence and workflow artifacts (`docs/processor-inventory.md`, `docs/infrastructure-verification.md`, `_bmad-output/implementation-artifacts/{epic-1-context.md,spec-1-1-project-scaffold-eu-pinned-infrastructure.md,sprint-status.yaml}`) -- record authoritative/pending EU evidence distinctly, restore full review traceability, and synchronize Story 1.1/Epic 1 tracking.
 
 Review findings breakdown:
-- Patches applied: 13 (high 4, medium 8, low 1).
+- Patches applied this pass: 6 (high 0, medium 5, low 1).
 - Items deferred: 0.
-- Items rejected: 6 (operational or later-story expectations not required by this intent, plus one incorrect matcher claim).
-- Follow-up review recommendation: true; patched severity counts high 4, medium 8, low 1; weighted medium/low score 25, and high findings independently require follow-up.
+- Items rejected: 15 (high 0, medium 10, low 5), primarily later-story functionality, platform-managed host behavior, and operational checks already enforced by documented production gates.
+- Follow-up review recommendation: true; patched severity counts high 0, medium 5, low 1; weighted medium/low score 16.
 
 Verification performed:
-- `npm ci && npm run typecheck && npm run lint && npm test && npm run build` -- passed; 6 test files and 48 tests passed, and the Next.js production build completed.
-- Forbidden password/Sentry symbol scan -- passed with no matches.
+- `npm ci && npm run typecheck && npm run lint && npm test && npm run build` -- passed independently after review patches; 0 vulnerabilities, 10 test files and 64 tests passed, and the Next.js production build completed.
+- Password/Sentry forbidden-symbol scan -- passed with no implementation matches.
 - `npx shadcn@4.13.0 info` -- passed; Tailwind v4 and Radix base confirmed.
-- Worker Docker build/run -- passed; Node 22 and ffmpeg 8.1.2 reported.
-- `npx vercel@latest build` -- passed and produced `.vercel/output`.
-- Supabase project `utohxfcfjmhypejrawmy` Stockholm placement relies on the binding authenticated evidence recorded on 2026-07-14; the current shell lacked a Supabase access token for repetition.
+- Worker Docker build/run -- passed; Node `v22.23.1` and ffmpeg `8.1.2` reported.
+- `npx vercel@latest build --yes` -- passed and generated `.vercel/output` with the pinned Node 22 build contract.
+- Matrix audit -- every magic-link, protected-route, confirmation, and worker-version row has passing automated or executable verification evidence.
+- `git diff --check` -- passed.
+- Supabase project `utohxfcfjmhypejrawmy` Stockholm placement relies on the binding authenticated evidence recorded on 2026-07-14; this shell lacks a Supabase access token for repetition.
 
-Residual risks: Brevo EU placement, 46elks EU processing evidence, and the 15-minute Supabase OTP setting still require the documented authoritative account checks before production launch. The repository expresses Vercel and Railway placement, while final deployed-runtime verification remains an operational launch gate.
+Residual risks: the 900-second Supabase OTP setting, Brevo EU placement, 46elks EU processing evidence, and deployed Vercel/Railway placement remain explicit production-launch gates in `docs/infrastructure-verification.md`. No production activation is authorized until those authoritative checks pass.

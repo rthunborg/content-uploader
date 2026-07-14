@@ -1,9 +1,9 @@
 type LogContext = Record<string, unknown>;
 
 const SENSITIVE_KEY =
-  /(?:authorization|cookie|pass(?:word|phrase)|secret|token|api[-_]?key|private[-_]?key|dsn)/i;
+  /(?:authorization|cookie|credential|pass(?:word|phrase)|secret|token|api[-_]?key|access[-_]?(?:key|token)|refresh[-_]?(?:key|token)|session(?:[-_]?(?:id|key|token))?|signing[-_]?key|private[-_]?key|dsn)/i;
 const SECRET_VALUE =
-  /(?:Bearer\s+\S+|sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|postgres(?:ql)?:\/\/[^\s:@/]+:[^\s@/]+@)/gi;
+  /(?:Bearer\s+\S+|sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/]+@)/gi;
 
 function sanitizeString(value: string) {
   return value.replace(SECRET_VALUE, "[REDACTED]");
@@ -11,7 +11,7 @@ function sanitizeString(value: string) {
 
 function serializable(
   value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
+  recursionPath: WeakSet<object> = new WeakSet(),
 ): unknown {
   if (typeof value === "string") return sanitizeString(value);
   if (
@@ -27,22 +27,26 @@ function serializable(
     return String(value);
   }
   if (typeof value !== "object") return String(value);
-  if (seen.has(value)) return "[CIRCULAR]";
-  seen.add(value);
+  if (recursionPath.has(value)) return "[CIRCULAR]";
+  recursionPath.add(value);
 
   try {
     if (Array.isArray(value)) {
-      return value.map((item) => serializable(item, seen));
+      return value.map((item) => serializable(item, recursionPath));
     }
 
     return Object.fromEntries(
       Object.entries(value).map(([key, nested]) => [
         key,
-        SENSITIVE_KEY.test(key) ? "[REDACTED]" : serializable(nested, seen),
+        SENSITIVE_KEY.test(key)
+          ? "[REDACTED]"
+          : serializable(nested, recursionPath),
       ]),
     );
   } catch {
     return "[UNSERIALIZABLE]";
+  } finally {
+    recursionPath.delete(value);
   }
 }
 

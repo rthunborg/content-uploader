@@ -53,7 +53,14 @@ export async function requestMagicLinkWithClient(
     return { ok: false, message: AUTH_COPY.requestFailed };
   }
 
-  return error ? { ok: false, message: AUTH_COPY.requestFailed } : { ok: true };
+  if (error) {
+    logError("auth.magic_link_request_failed", new Error("Provider request failed"), {
+      operation: "signInWithOtp",
+    });
+    return { ok: false, message: AUTH_COPY.requestFailed };
+  }
+
+  return { ok: true };
 }
 
 export type SupportedEmailOtpType = "email" | "magiclink" | "invite";
