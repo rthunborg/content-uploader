@@ -1,0 +1,8 @@
+.git
+.next
+node_modules
+_bmad
+_bmad-output
+.env*
+!.env.example
+npm-debug.log*
