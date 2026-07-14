@@ -2,8 +2,9 @@
 title: 'Story 1.4: Magic-link authentication & the single front door'
 type: 'feature'
 created: '2026-07-14'
-status: 'in-review'
+status: 'done'
 baseline_revision: '9aa936520e8f90ce45797a2877207c06989d2335'
+final_revision: '0431153bd807f844c18c837ac777a376fbd053ea'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
