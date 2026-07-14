@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import localFont from "next/font/local";
 
 import "./globals.css";
+import { QueryProvider } from "./query-provider";
 
 const inter = localFont({
   src: "./fonts/inter-variable.woff2",
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="sv" className={inter.variable}>
-      <body>{children}</body>
+      <body><QueryProvider>{children}</QueryProvider></body>
     </html>
   );
 }

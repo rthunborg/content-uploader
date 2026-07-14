@@ -14,6 +14,7 @@ export const ERROR_HTTP_STATUS = {
   BUDGET_REACHED: 429,
   RENDITION_FAILED: 500,
   EXPORT_FAILED: 500,
+  INTERNAL_ERROR: 500,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_HTTP_STATUS;

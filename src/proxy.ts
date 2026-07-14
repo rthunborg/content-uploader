@@ -5,7 +5,12 @@ import { safeContinuation } from "@/lib/auth/continuation";
 import { publicSupabaseEnvironment } from "@/lib/supabase/env";
 import { logError } from "@/shared/logger";
 
-const PUBLIC_APP_ROUTES = new Set(["/auth/login", "/auth/confirm", "/auth/error"]);
+const PUBLIC_APP_ROUTES = new Set([
+  "/auth/login",
+  "/auth/confirm",
+  "/auth/error",
+  "/auth/paused",
+]);
 
 export function authRedirectFor(
   pathname: string,

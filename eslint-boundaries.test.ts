@@ -30,6 +30,15 @@ describe("architectural import boundaries", () => {
     ["src/app/example/route.ts", 'import { profiles } from "../../db/schema";'],
     ["src/app/example/page.tsx", 'import { profiles } from "@/db/schema";'],
     ["src/app/example/layout.tsx", 'import { getDatabase } from "@/db/client";'],
+    ["src/app/example/actions.ts", 'import { getDatabase } from "@/db/client";'],
+    ["src/components/example.tsx", 'import { getDatabase } from "@/db/client";'],
+    ["src/features/upload/example.ts", 'import { systemContext } from "@/lib/auth";'],
+    ["src/features/upload/dal/example.ts", 'import { requireUserPreConsent } from "@/lib/auth";'],
+    ["src/app/example/route.ts", 'import { requireUserPreConsent } from "@/lib/auth";'],
+    ["src/components/example.tsx", 'import { systemContext } from "@/lib/auth";'],
+    ["src/lib/helper.ts", 'import { systemContext } from "@/lib/auth";'],
+    ["src/lib/helper.ts", 'import { getDatabase } from "@/db/client";'],
+    ["src/features/upload/helper.ts", 'import { getDatabase } from "@/db/client";'],
     [
       "src/app/(ambassador)/example/page.tsx",
       'import x from "@/features/ambassadors/dal/admin";',
@@ -58,6 +67,10 @@ describe("architectural import boundaries", () => {
     ["worker/jobs/example.ts", 'import { assets } from "../../src/db/schema";'],
     ["src/app/example/route.ts", 'import x from "@/features/upload/dal/ambassador";'],
     ["src/features/upload/dal/example.ts", 'import x from "@/features/upload/dal/private";'],
+    ["src/features/consent/dal/pre-consent.ts", 'import { requireUserPreConsent } from "@/lib/auth";'],
+    ["src/app/api/webhooks/example/route.ts", 'import { systemContext } from "@/lib/auth";'],
+    ["src/app/api/cron/example/route.ts", 'import { systemContext } from "@/lib/auth";'],
+    ["src/features/upload/dal/example.ts", 'import { getDatabase } from "@/db/client";'],
   ])("allows %s importing an approved layer", async (filePath, code) => {
     expect(await messagesFor(code, filePath)).toHaveLength(0);
   });

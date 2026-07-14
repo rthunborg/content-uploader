@@ -14,14 +14,18 @@ describe("createBrowserSupabaseClient", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("passes the exact public environment values to Supabase", () => {
-    const client = { kind: "browser" };
+    const client = { auth: { kind: "auth", getSession: vi.fn() }, storage: { kind: "storage" }, from: vi.fn() };
     publicSupabaseEnvironment.mockReturnValue({
       url: "https://project.supabase.co",
       publishableKey: "publishable-key",
     });
     createBrowserClient.mockReturnValue(client);
 
-    expect(createBrowserSupabaseClient()).toBe(client);
+    const facade = createBrowserSupabaseClient();
+    expect(facade.auth).toBe(client.auth);
+    expect(facade.getTusAccessToken).toEqual(expect.any(Function));
+    expect(facade).not.toHaveProperty("from");
+    expect(facade).not.toHaveProperty("storage");
     expect(createBrowserClient).toHaveBeenCalledOnce();
     expect(createBrowserClient).toHaveBeenCalledWith(
       "https://project.supabase.co",

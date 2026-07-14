@@ -1,21 +1,27 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createClient, verifyOtp } = vi.hoisted(() => ({
+const { createClient, verifyOtp, getOwnAccountState, logError } = vi.hoisted(() => ({
   createClient: vi.fn(),
   verifyOtp: vi.fn(),
+  getOwnAccountState: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: createClient,
 }));
+vi.mock("@/features/consent/dal/pre-consent", () => ({ getOwnAccountState }));
+vi.mock("@/shared/logger", () => ({ logError }));
 
 import { GET } from "./route";
+import { DomainError } from "@/lib/errors";
 
 beforeEach(() => {
   vi.clearAllMocks();
   createClient.mockResolvedValue({ auth: { verifyOtp } });
   verifyOtp.mockResolvedValue({ error: null });
+  getOwnAccountState.mockResolvedValue("active");
 });
 
 function request(query: string) {
@@ -61,4 +67,34 @@ describe("GET /auth/confirm", () => {
       expect(response.headers.get("location")).toBe("https://portal.example/tasks");
     },
   );
+
+  it.each([
+    ["invited", "https://portal.example/auth/consent?next=%2Ftasks"],
+    ["deactivated", "https://portal.example/auth/paused"],
+  ])("routes %s accounts by server-side state", async (state, location) => {
+    getOwnAccountState.mockResolvedValue(state);
+    const response = await GET(request("token_hash=hash&type=magiclink&next=%2Ftasks"));
+    expect(response.headers.get("location")).toBe(location);
+  });
+
+  it.each(["missing profile", "transient database failure"])(
+    "keeps an authenticated session recoverable when account-state resolution has a %s",
+    async () => {
+      getOwnAccountState.mockRejectedValue(new Error("private detail"));
+      const response = await GET(request("token_hash=hash&type=magiclink&next=%2Ftasks"));
+      expect(response.headers.get("location")).toBe("https://portal.example/auth/paused");
+      expect(logError).toHaveBeenCalledWith(
+        "auth.account_state_resolution_failed",
+        expect.any(Error),
+        { operation: "getOwnAccountState" },
+      );
+    },
+  );
+
+  it("routes an expected inactive domain state without incident logging", async () => {
+    getOwnAccountState.mockRejectedValue(new DomainError("ACCOUNT_INACTIVE", "provider detail"));
+    const response = await GET(request("token_hash=hash&type=magiclink&next=%2Ftasks"));
+    expect(response.headers.get("location")).toBe("https://portal.example/auth/paused");
+    expect(logError).not.toHaveBeenCalled();
+  });
 });

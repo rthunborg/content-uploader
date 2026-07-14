@@ -10,6 +10,7 @@ const invite = readFileSync(resolve(root, "supabase/templates/invite.html"), "ut
 
 describe("local Supabase email authentication contract", () => {
   it("disables project signup, enables email login, and expires links after 15 minutes", () => {
+    expect(config).toContain("jwt_expiry = 600");
     expect(config).toMatch(/\[auth\][\s\S]*?enable_signup = false/);
     expect(config).toMatch(/\[auth\.email\][\s\S]*?enable_signup = true/);
     expect(config).toMatch(/otp_expiry = 900/);
