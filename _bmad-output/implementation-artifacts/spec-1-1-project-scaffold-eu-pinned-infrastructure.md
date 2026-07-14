@@ -2,8 +2,9 @@
 title: 'Story 1.1: Project scaffold & EU-pinned infrastructure'
 type: 'feature'
 created: '2026-07-13'
-status: in-review
+status: done
 baseline_revision: '4cefd5735814af4e72790321ff9c6747dc1428d4'
+final_revision: '6004fa9dd07884ac3a7245a858d3663a8895690e'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
