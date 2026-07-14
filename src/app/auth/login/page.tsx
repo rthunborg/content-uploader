@@ -1,4 +1,3 @@
-import { AUTH_COPY } from "@/app/auth/auth-flow";
 import { safeContinuation } from "@/lib/auth/continuation";
 
 import { LoginForm } from "./login-form";
@@ -10,7 +9,6 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const requestedNext = Array.isArray(params.next) ? params.next[0] : params.next;
-  const error = Array.isArray(params.error) ? params.error[0] : params.error;
 
   return (
     <main className="auth-shell">
@@ -20,11 +18,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <p className="intro">
           Ange din e-postadress så skickar vi en säker engångslänk.
         </p>
-        {error === "link_invalid" ? (
-          <p className="message message-error" role="alert">
-            {AUTH_COPY.linkInvalid}
-          </p>
-        ) : null}
         <LoginForm next={safeContinuation(requestedNext)} />
       </section>
     </main>

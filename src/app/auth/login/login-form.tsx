@@ -3,9 +3,9 @@
 import { useActionState } from "react";
 
 import {
-  INITIAL_LOGIN_STATE,
   requestMagicLink,
 } from "./actions";
+import { INITIAL_LOGIN_STATE } from "./login-state";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, formAction, isPending] = useActionState(

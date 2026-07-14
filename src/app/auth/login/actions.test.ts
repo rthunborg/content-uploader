@@ -11,7 +11,8 @@ vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: createClient,
 }));
 
-import { INITIAL_LOGIN_STATE, requestMagicLink } from "./actions";
+import { requestMagicLink } from "./actions";
+import { INITIAL_LOGIN_STATE } from "./login-state";
 
 function form(email: string, next = "/tasks") {
   const data = new FormData();

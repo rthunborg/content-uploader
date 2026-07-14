@@ -18,6 +18,9 @@ Verified on 2026-07-14 with the authenticated Supabase CLI profile `content-uplo
 - If the Management API exposes the auth configuration, export the authenticated response to the private deployment record and retain only the project reference and expiry field in review evidence.
 - Required value: 900 seconds (15 minutes). If it differs or cannot be authoritatively verified, stop the production launch and correct/verify it before sending authentication links.
 - Do not record SMTP credentials, API tokens, signing secrets, or complete provider responses in this repository.
+- In Authentication → URL Configuration, set the production site URL and allow every deployed portal origin that may appear in `emailRedirectTo`; links must converge on `/auth/confirm`.
+- In Authentication → SMTP Settings, enable custom SMTP with the production Brevo SMTP account. Keep credentials in the provider dashboard only.
+- Repository `supabase/config.toml` configures the local stack; it does not apply these hosted dashboard values.
 
 ## Vercel app
 

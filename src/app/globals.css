@@ -110,6 +110,9 @@ label { font-weight: 700; }
 input { border: 1px solid var(--surface-media); border-radius: 4px; padding: 10px 12px; background: var(--surface); color: var(--surface-media); }
 .message { margin: 0; padding: 12px; border: 1px solid var(--action-primary); border-radius: 4px; background: var(--info); }
 .message-error { border-color: var(--destructive); background: var(--caution-bg); }
+.primary-link { display: inline-flex; min-height: 44px; align-items: center; margin-top: 8px; border-radius: 4px; padding: 10px 16px; background: var(--action-primary); color: var(--surface); font-weight: 700; text-decoration: none; }
+.primary-link:hover { background: var(--action-primary-hover); }
+.primary-link:active { background: var(--action-primary-pressed); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

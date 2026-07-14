@@ -32,11 +32,16 @@ describe("proxy route gate", () => {
     );
   });
 
-  it.each(["/auth/login", "/auth/confirm"])(
+  it.each(["/auth/login", "/auth/confirm", "/auth/error"])(
     "keeps the public auth route public: %s",
     (pathname) => {
       expect(authRedirectFor(pathname, "", false)).toBeNull();
     },
+  );
+
+  it.each(["/auth/error/more", "/auth/errors", "/auth/login-copy"])(
+    "keeps an auth lookalike gated: %s",
+    (pathname) => expect(authRedirectFor(pathname, "", false)).toBe("/auth/login?next=%2F"),
   );
 
   it("redirects a private route and preserves an allow-listed continuation", () => {

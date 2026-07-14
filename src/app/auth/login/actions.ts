@@ -10,15 +10,7 @@ import { safeContinuation } from "@/lib/auth/continuation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { logError } from "@/shared/logger";
 
-export type LoginState = {
-  status: "idle" | "success" | "error";
-  message: string | null;
-};
-
-export const INITIAL_LOGIN_STATE: LoginState = {
-  status: "idle",
-  message: null,
-};
+import type { LoginState } from "./login-state";
 
 const MAX_EMAIL_LENGTH = 254;
 

@@ -7,8 +7,11 @@ export const AUTH_COPY = {
     "Kontrollera din inkorg. Vi har skickat en säker länk för att logga in.",
   requestFailed:
     "Länken kunde inte skickas just nu. Försök igen om en liten stund.",
-  linkInvalid:
-    "Länken är ogiltig eller har gått ut. Be om en ny inloggningslänk.",
+  linkExpiredTitle: "Länken går inte längre att använda",
+  linkExpiredReason: "Länken kan ha gått ut eller redan ha använts.",
+  linkExpiredRemedy:
+    "Be om en ny inloggningslänk för att fortsätta säkert.",
+  requestFreshLink: "Be om en ny inloggningslänk",
 } as const;
 
 type MagicLinkClient = {
@@ -27,6 +30,16 @@ export function buildConfirmationUrl(requestUrl: URL, next: string | null) {
   const confirmationUrl = new URL("/auth/confirm", requestUrl.origin);
   confirmationUrl.searchParams.set("next", safeContinuation(next));
   return confirmationUrl.toString();
+}
+
+export function buildLinkErrorUrl(requestUrl: URL, next: string | null) {
+  const errorUrl = new URL("/auth/error", requestUrl.origin);
+  errorUrl.searchParams.set("next", safeContinuation(next));
+  return errorUrl.toString();
+}
+
+export function futureAuthPurpose(value: string | null): string | null {
+  return value && /^[a-z][a-z0-9_-]{0,63}$/.test(value) ? value : null;
 }
 
 export async function requestMagicLinkWithClient(

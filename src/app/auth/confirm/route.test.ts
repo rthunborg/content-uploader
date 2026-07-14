@@ -37,7 +37,7 @@ describe("GET /auth/confirm", () => {
     arrange();
     const response = await GET(request("token_hash=hash&type=email&next=%2Ftasks"));
     expect(response.headers.get("location")).toBe(
-      "https://portal.example/auth/login?error=link_invalid&next=%2Ftasks",
+      "https://portal.example/auth/error?next=%2Ftasks",
     );
   });
 
@@ -47,8 +47,18 @@ describe("GET /auth/confirm", () => {
       const response = await GET(request(`${query}&next=https%3A%2F%2Fevil.example`));
       expect(verifyOtp).not.toHaveBeenCalled();
       expect(response.headers.get("location")).toBe(
-        "https://portal.example/auth/login?error=link_invalid&next=%2F",
+        "https://portal.example/auth/error?next=%2F",
       );
+    },
+  );
+
+  it.each(["email", "magiclink", "invite"])(
+    "verifies supported type %s exactly once",
+    async (type) => {
+      const response = await GET(request(`token_hash=hash&type=${type}&purpose=future&next=%2Ftasks`));
+      expect(verifyOtp).toHaveBeenCalledOnce();
+      expect(verifyOtp).toHaveBeenCalledWith({ token_hash: "hash", type });
+      expect(response.headers.get("location")).toBe("https://portal.example/tasks");
     },
   );
 });

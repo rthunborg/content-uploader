@@ -6,6 +6,8 @@ vi.mock("@/shared/logger", () => ({ logError }));
 
 import {
   buildConfirmationUrl,
+  buildLinkErrorUrl,
+  futureAuthPurpose,
   requestMagicLinkWithClient,
   supportedEmailOtpType,
 } from "./auth-flow";
@@ -87,6 +89,18 @@ describe("email-link authentication flow", () => {
     ).toBe("https://portal.example/auth/confirm?next=%2F");
   });
 
+  it("builds recovery URLs containing only a safe continuation", () => {
+    const url = new URL(
+      buildLinkErrorUrl(
+        new URL("https://portal.example/auth/confirm?token_hash=secret&email=user@example.com"),
+        "/tasks",
+      ),
+    );
+    expect(url.toString()).toBe("https://portal.example/auth/error?next=%2Ftasks");
+    expect(url.searchParams.has("token_hash")).toBe(false);
+    expect(url.searchParams.has("email")).toBe(false);
+  });
+
   it.each(["email", "magiclink", "invite"])(
     "accepts supported email OTP type %s",
     (type) => expect(supportedEmailOtpType(type)).toBe(type),
@@ -96,4 +110,10 @@ describe("email-link authentication flow", () => {
     "rejects unsupported OTP type %s",
     (type) => expect(supportedEmailOtpType(type)).toBeNull(),
   );
+
+  it("validates the ignored future purpose seam without changing routing", () => {
+    expect(futureAuthPurpose("task_upload")).toBe("task_upload");
+    expect(futureAuthPurpose("../../admin")).toBeNull();
+    expect(futureAuthPurpose(null)).toBeNull();
+  });
 });
