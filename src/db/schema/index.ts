@@ -1,3 +1,4 @@
+export * from "./audit";
 export * from "./assets";
 export * from "./campaigns";
 export * from "./profiles";

@@ -59,8 +59,15 @@ export default defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          paths: ["server-only", "react"],
+          paths: [
+            "server-only",
+            "react",
+          ],
           patterns: [
+            {
+              regex: "^@/db/client(?:/|$)",
+              message: "The runtime-neutral audit emitter must never capture the global database client.",
+            },
             {
               group: [
                 "next",
@@ -69,7 +76,6 @@ export default defineConfig([
                 "@/app",
                 "@/app/*",
                 "@/db",
-                "@/db/*",
                 "@/features",
                 "@/features/*",
                 "@/lib",
@@ -78,6 +84,7 @@ export default defineConfig([
                 "@/worker/*",
               ],
             },
+            { regex: "^@/db/(?!client(?:/|$))" },
             { regex: "^(?:\\.\\./)+(?:src/)?(?:app|db|features|lib|worker)(?:/|$)" },
           ],
         },

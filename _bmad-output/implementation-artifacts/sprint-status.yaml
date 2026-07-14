@@ -55,7 +55,7 @@ development_status:
   1-3-fleet-deck-design-tokens-themed-component-base: done
   1-4-magic-link-authentication-the-single-front-door: done
   1-5-dal-choke-point-auth-contexts-role-separation-revocation: done
-  1-6-audit-event-emitter-registry: backlog
+  1-6-audit-event-emitter-registry: done
   1-7-ci-cd-pipeline-error-logging-seam: backlog
   epic-1-retrospective: optional
 

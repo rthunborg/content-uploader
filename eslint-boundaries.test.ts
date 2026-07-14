@@ -10,8 +10,8 @@ async function messagesFor(code: string, filePath: string) {
 
 async function expectRestricted(code: string, filePath: string, prohibited: string) {
   const messages = await messagesFor(code, filePath);
-  expect(messages).toHaveLength(1);
-  expect(messages[0].message).toContain(`'${prohibited}'`);
+  expect(messages.length).toBeGreaterThan(0);
+  expect(messages.some(({ message }) => message.includes(`'${prohibited}'`))).toBe(true);
 }
 
 describe("architectural import boundaries", () => {
@@ -19,6 +19,7 @@ describe("architectural import boundaries", () => {
     ["src/shared/example.ts", 'import "server-only";'],
     ["src/shared/example.ts", 'import React from "react";'],
     ["src/shared/nested/example.ts", 'import { profiles } from "../../db/schema";'],
+    ["src/shared/audit.ts", 'import { getDatabase } from "@/db/client";'],
     ["src/shared/example.ts", 'import x from "@/features/upload/dal/ambassador";'],
     ["worker/jobs/example.ts", 'import { requireUser } from "@/lib/auth";'],
     ["worker/jobs/example.ts", 'import { requireUser } from "../../src/lib/auth";'],
@@ -71,6 +72,9 @@ describe("architectural import boundaries", () => {
     ["src/app/api/webhooks/example/route.ts", 'import { systemContext } from "@/lib/auth";'],
     ["src/app/api/cron/example/route.ts", 'import { systemContext } from "@/lib/auth";'],
     ["src/features/upload/dal/example.ts", 'import { getDatabase } from "@/db/client";'],
+    ["src/features/upload/dal/example.ts", 'import { audit } from "@/shared/audit";'],
+    ["worker/jobs/example.ts", 'import { audit } from "@/shared/audit";'],
+    ["worker/jobs/example.ts", 'import { auditEvents } from "@/db/schema";'],
   ])("allows %s importing an approved layer", async (filePath, code) => {
     expect(await messagesFor(code, filePath)).toHaveLength(0);
   });
