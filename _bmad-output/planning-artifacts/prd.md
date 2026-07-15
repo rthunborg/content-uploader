@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation (skipped - no innovation signals)', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete', 'step-e-01-discovery', 'step-e-02-review', 'step-e-03-edit']
 completedAt: '2026-07-06'
-date: '2026-07-12'
+date: '2026-07-15'
 classification:
   projectType: web_app
   domain: general (internal HR/marketing content management, GDPR-sensitive)
@@ -16,12 +16,14 @@ documentCounts:
   projectDocs: 0
 workflowType: 'prd'
 workflow: 'edit'
-lastEdited: '2026-07-12'
+lastEdited: '2026-07-15'
 editHistory:
   - date: '2026-07-06'
     changes: 'Post-validation fixes: quantified NFR2/NFR3/NFR10/NFR16; tightened FR9/FR11/FR19/FR36 wording; fixed export filename collision (FR30 + scope item 6); added Journey 5 (v1.1 generate-publish-prove loop) closing traceability gaps; promoted consent cards and offboarding/erasure runbook to standalone versioned artifacts; rewrote References'
   - date: '2026-07-12'
     changes: 'Applied the approved Sprint Change Proposal 2026-07-10: replaced the freeform taxonomy with curated MVP themes; provisioned dormant campaign seams for an admin-only v2 calendar; preserved the independent v1.1 usage loop; synchronized journeys, requirements, scope, phasing, and terminology; and completed post-validation cleanup of FR/NFR implementation leakage and frontmatter metadata.'
+  - date: '2026-07-15'
+    changes: 'Resolved the unattended Story 2.1 identity/activity gap: full name is explicit admin-maintained ambassador identity data and roster activity is the durable last-login value only; missing legacy names are never inferred from email.'
 ---
 
 # Product Requirements Document - stena-content-portal
@@ -113,7 +115,7 @@ First 6 months after MVP launch:
 4. **Messaging** — email AND SMS, to one ambassador or all active ambassadors
 5. **Admin library** — filters (ambassador/type/category/date/theme), theme browse views, transcoding + thumbnail pipeline, admin-private starring, "new this week" triage queue with curated theme assignment
 6. **Themes + zip export** — admin-managed curated themes with create/view/update/archive/restore lifecycle, guarded hard-delete only at zero connected assets, explicit individual and bulk many-to-many asset assignment, and `{ambassador-name}-{upload-date}-{nn}` filenames in zip (sequence suffix disambiguates same-day batches)
-7. **Ambassador management** — invite by email, activate/deactivate, delete, last-login/activity; contact data admin-owned
+7. **Ambassador management** — admin-maintained full name and contact data, invite by email, activate/deactivate, delete, and last login
 8. **Admin brand-asset uploads** — `origin: admin` on the shared asset model
 9. **Audit event logging** — deletes/uploads/exports/shares logged from day one (viewer UI in v1.1)
 
@@ -390,7 +392,7 @@ Not applicable — internal tool. Explicitly: `noindex`, no public pages beyond 
 ### Ambassador Management (MVP)
 
 - FR31: Admins can invite ambassadors by email, and can activate, deactivate, or delete ambassador accounts
-- FR32: Admins can view and maintain each ambassador's contact details (email, mobile) and see last-login/activity
+- FR32: Admins can view and maintain each ambassador's full name and contact details (email, mobile) and see their last login; missing pre-existing names remain explicit rather than inferred from email
 - FR33: Admins can filter the library by a specific ambassador and bulk-delete their content (offboarding support)
 
 ### Audit & Governance (MVP)

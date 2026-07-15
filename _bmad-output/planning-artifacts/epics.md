@@ -1,6 +1,7 @@
 ---
 stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
 completedAt: '2026-07-12'
+updatedAt: '2026-07-15'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
@@ -73,7 +74,7 @@ Release allocation: **36 MVP FRs (FR1–FR36), 11 v1.1 FRs (FR37–FR44 and FR46
 **Ambassador Management (MVP)**
 
 - FR31: Admins can invite ambassadors by email, and can activate, deactivate, or delete ambassador accounts
-- FR32: Admins can view and maintain each ambassador's contact details (email, mobile) and see last-login/activity
+- FR32: Admins can view and maintain each ambassador's full name and contact details (email, mobile) and see their last login; missing pre-existing names remain explicit rather than inferred from email
 - FR33: Admins can filter the library by a specific ambassador and bulk-delete their content (offboarding support)
 
 **Audit & Governance (MVP)**
@@ -323,7 +324,7 @@ FR28: Epic 6 — Upload brand assets into the same library (admin-origin)
 FR29: Epic 7 — Delete any asset incl. bulk; permanent
 FR30: Epic 7 — Multi-select zip export with human-readable filenames
 FR31: Epic 2 — Invite / activate / deactivate / delete ambassador accounts
-FR32: Epic 2 — Maintain contact details; see last-login/activity
+FR32: Epic 2 — Maintain full name/contact details; see `last_login_at`
 FR33: Epic 7 — Filter by ambassador + bulk-delete their content (offboarding)
 FR34: Epic 1 — Audit events (actor + timestamp) from day one (single emitter, cross-cutting)
 FR35: Epic 7 — Auto-expire audit events > 6 months; acceptance records exempt
@@ -351,7 +352,7 @@ Establishes the EU-pinned application on its confirmed stack (scaffold from the 
 **UX:** UX-DR1–UX-DR5, UX-DR16–UX-DR22, UX-DR23 (expiry screen), UX-DR31
 
 ### Epic 2: Ambassador Accounts & Lifecycle Management
-Gives admins the roster cockpit: invite ambassadors by email (the invite doubles as their first-login link), maintain each ambassador's contact details, see last-login/activity, and activate / deactivate / delete accounts — with deactivation and deletion driving the account-state machine and immediate all-device session revocation. After this epic an admin can populate and manage the ambassador population, the precondition for onboarding; the KPI `invited_at` clock starts here.
+Gives admins the roster cockpit: invite ambassadors by full name and email (the invite doubles as their first-login link), maintain each ambassador's full name/contact details, see `last_login_at`, and activate / deactivate / delete accounts — with deactivation and deletion driving the account-state machine and immediate all-device session revocation. After this epic an admin can populate and manage the ambassador population, the precondition for onboarding; the KPI `invited_at` clock starts here.
 **FRs covered:** FR31, FR32
 **NFRs:** NFR14 (auth-invite delivery — foundation), NFR8
 **Architecture:** AR14 (KPI columns), AR23 (state machine consumers), AR24, AR39 (deleteAccount seam)
@@ -459,7 +460,7 @@ So that MVP curation and the v2 calendar build on one governed, reproducible sch
 
 **Given** the account-state machine is consumed by auth, messaging, and admin UI (AR23),
 **When** the schema is created,
-**Then** a `profiles` table exists with the state column constrained to `invited|active|inactive_declined|inactive_withdrawn|deactivated` (text + CHECK, not pgEnum), contact fields (email, mobile), and the durable KPI columns `invited_at / first_accepted_at / first_upload_at / last_login_at` (AR14); admin role lives only in server-settable Supabase `app_metadata.admin`, and `profiles` has no role/admin column,
+**Then** a `profiles` table exists with the state column constrained to `invited|active|inactive_declined|inactive_withdrawn|deactivated` (text + CHECK, not pgEnum), authoritative nullable `full_name`, contact fields (email, mobile), and the durable KPI columns `invited_at / first_accepted_at / first_upload_at / last_login_at` (AR14); `full_name` is nullable only for migrated/pre-existing rows, never inferred from email, and required for new ambassador invitations; admin role lives only in server-settable Supabase `app_metadata.admin`, and `profiles` has no role/admin column,
 **And** deletion of a profile is row removal — `deleted` is not a state value.
 
 **Given** curated themes are the live MVP organization axis (FR27, AR11),
@@ -616,7 +617,7 @@ So that I can manage the program population at a glance.
 
 **Given** existing ambassador profiles,
 **When** I open the ambassadors page,
-**Then** I see a table of ambassadors with name, email, mobile, account state, and last-login/activity (FR32),
+**Then** I see a table of ambassadors with authoritative full name, email, mobile, account state, and `last_login_at` (FR32); a missing pre-existing name renders “Namn saknas” and a missing login renders “Aldrig,”
 **And** each row links to a detail view that is also the offboarding entry point (offboarding actions arrive in Epic 7).
 
 **Given** the admin surface conventions (UX-DR20),
@@ -631,13 +632,13 @@ So that they can activate with a single click and no password.
 
 **Acceptance Criteria:**
 
-**Given** an email address (FR31 invite, FR2),
+**Given** a nonblank full name and email address (FR31 invite, FR2),
 **When** I submit an invite,
 **Then** a `profiles` row is created in the `invited` state with `invited_at` set (AR14), and a Supabase invite email is sent whose link doubles as the ambassador's first login.
 
 **Given** the invite form (UX-DR19),
 **When** I compose it,
-**Then** it is a single-column form with the ambassador's email and optional mobile, validated on blur and submit, with input never cleared on error.
+**Then** it is a single-column form with the ambassador's full name and email plus optional mobile, validated on blur and submit, with input never cleared on error.
 
 **Given** invite-email deliverability is launch-critical (NFR14),
 **When** an invite is sent,
@@ -652,7 +653,7 @@ So that notifications reach them since there is no HR-system integration.
 **Acceptance Criteria:**
 
 **Given** contact data is admin-owned (FR32, AR-integration),
-**When** I edit an ambassador's email or mobile,
+**When** I edit an ambassador's full name, email, or mobile,
 **Then** the change persists to their profile and is used by future sends,
 **And** keeping contact data current is documented as an admin duty.
 

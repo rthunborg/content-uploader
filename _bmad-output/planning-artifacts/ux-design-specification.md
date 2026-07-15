@@ -2,12 +2,14 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 lastStep: 14
 completedAt: '2026-07-07'
-lastEdited: '2026-07-12'
+lastEdited: '2026-07-15'
 editHistory:
   - date: '2026-07-07'
     changes: 'Adversarial review remediation (18 findings): aligned MVP vs v1.1 deep-link claims; replaced walk-away with interruption-safe upload model (iOS Safari background constraint); precise tap/typing KPIs; triage queue membership rules + dismiss undo + space=play/pause; spontaneous upload flow A2; ambassador consent withdrawal (Flow 5b); session revocation requirements; re-accept gate in Flow 2; MVP-honest completion copy; Core Blue disambiguation rules; admin compose/send Flow 6; async export with size estimate; fixed duplicate section numbering; type scale marked provisional; deletion semantics enumerated'
   - date: '2026-07-12'
     changes: 'Applied the approved Sprint Change Proposal 2026-07-10: replaced the legacy freeform taxonomy with curated themes; applied ThemePicker active/archived lifecycle behavior and permissioned inline creation; updated SelectionBar, left-rail filtering, triage, browse, and bystander-erasure terminology; preserved the ambassador surface and kept campaign/calendar UI out of MVP.'
+  - date: '2026-07-15'
+    changes: 'Resolved Story 2.1 identity/activity display semantics: invite and maintenance flows own explicit full names, missing legacy names render “Namn saknas” without email inference, and roster activity is last login only.'
 workflowType: 'ux-design'
 classification:
   projectType: web_app
@@ -657,6 +659,7 @@ From the themed headless layer (shadcn/Radix-style), used as-is with Fleet Deck 
 
 Forms are deliberately scarce (login email, optional descriptions, theme creation, task/message compose, ambassador invite). Where they exist:
 
+- The ambassador invite collects full name and email, with mobile marked optional. Full name is admin-maintained identity data and is never inferred from the email address.
 - Single column, labels above fields, generous spacing; nothing marked "required" — instead the rare optional field is marked "(optional)" because required is the exception here.
 - Validate on blur and on submit; message sits under the field; input content is never cleared by an error.
 - Mobile: 16 px input font (blocks iOS zoom), purpose-matched keyboards (`type=email`, etc.), autofocus only on single-field screens (login email).
@@ -676,7 +679,7 @@ Forms are deliberately scarce (login email, optional descriptions, theme creatio
 - **Search & filter:** filters compose as removable chips with a one-tap "clear all"; results update live (< 500 ms, no Apply button); search covers upload descriptions, while themes are available through filtering and browse views; an active-filter state is always visible so "why am I seeing only 3 items" never happens.
 - **Modals & sheets:** decisions and compose only — never status display. Bottom sheets on mobile, centered dialogs on desktop; focus-trapped, Esc-dismissable, focus returned.
 - **Outbound messages (email/SMS) follow app patterns:** personal sender framing ("Hi Jonas — Petra needs…"), exactly one action per message, core palette only (no light blue/pink outside the app), and every link has a friendly expired-state landing.
-- **Dates & names:** relative dates in dense views ("today," "Mon"), absolute on hover/detail; ambassadors always shown as full names — the `jonas-lindqvist-2026-06-24` form exists only in export filenames.
+- **Dates & names:** relative dates in dense views ("today," "Mon"), absolute on hover/detail; ambassadors always shown by the admin-maintained full name — a missing pre-existing value renders “Namn saknas” and is never inferred from email. The `jonas-lindqvist-2026-06-24` form exists only in export filenames. The roster's activity/date column is `last_login_at` only and renders “Aldrig” when null.
 
 ## Responsive Design & Accessibility
 

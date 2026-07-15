@@ -1,11 +1,11 @@
 ---
 project_name: 'stena-content-portal'
 user_name: 'Rasmus'
-date: '2026-07-12'
+date: '2026-07-15'
 sections_completed:
   ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
-rule_count: 130
+rule_count: 132
 optimized_for_llm: true
 ---
 
@@ -114,6 +114,13 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 4. `systemContext()` — no session; importable only from `app/api/webhooks/*` and cron entries.
    Audit actor: `actor_id: null`, `actor_name_snapshot: 'system'`. The worker uses its own
    worker-local context, passing `actor: 'system'`.
+
+**Ambassador identity and roster activity:**
+- `profiles.full_name` is the authoritative display/export name. It is nullable only for migrated or
+  pre-existing rows, NEVER inferred from email, required for new ambassador invitations, and maintained
+  with email/mobile. Render missing legacy values as Swedish “Namn saknas” until corrected.
+- Roster “last-login/activity” means `profiles.last_login_at` only. Do not add or derive a broader
+  `last_activity_at`; render null as Swedish “Aldrig.”
 
 **Supabase:**
 - Browser client is for Auth + TUS uploads ONLY. Client-side `.from()` table access is a violation —
@@ -338,7 +345,8 @@ Versions verified 2026-07-07. Full rationale: `_bmad-output/planning-artifacts/a
 - KPI columns are durable and DAL-updated — NEVER derive KPIs from the expiring audit log:
   `profiles.invited_at/first_accepted_at/first_upload_at/last_login_at`, `tasks.created_at/fulfilled_at`,
   `task_recipients.completed_at`. Task completion is PER-RECIPIENT; `tasks.fulfilled_at` = first
-  recipient completion (feeds the 7-day fulfillment KPI).
+  recipient completion (feeds the 7-day fulfillment KPI). The ambassador roster's activity value is
+  `profiles.last_login_at` only; null renders as “Aldrig.”
 
 **Upload pipeline invariants (NFR13 — the make-or-break subsystem):**
 - Staging is a DB state, not a bucket: init creates the asset row `processing_status='pending'`
