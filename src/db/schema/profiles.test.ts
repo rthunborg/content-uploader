@@ -22,6 +22,7 @@ describe("profiles schema", () => {
     expect(columns).toEqual(
       expect.arrayContaining([
         "email",
+        "fullName",
         "mobile",
         "invitedAt",
         "firstAcceptedAt",
@@ -30,6 +31,7 @@ describe("profiles schema", () => {
       ]),
     );
     expect(columns).not.toEqual(expect.arrayContaining(["role", "admin", "deleted"]));
+    expect(getTableColumns(profiles).fullName.notNull).toBe(false);
   });
 
   it("backs account state with a database check", () => {

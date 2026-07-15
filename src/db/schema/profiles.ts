@@ -6,14 +6,9 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { ACCOUNT_STATES } from "@/shared/account-states";
 
-export const ACCOUNT_STATES = [
-  "invited",
-  "active",
-  "inactive_declined",
-  "inactive_withdrawn",
-  "deactivated",
-] as const;
+export { ACCOUNT_STATES } from "@/shared/account-states";
 
 const ACCOUNT_STATE_CHECK_VALUES = sql.raw(
   ACCOUNT_STATES.map((state) => `'${state.replaceAll("'", "''")}'`).join(", "),
@@ -23,6 +18,7 @@ export const profiles = pgTable(
   "profiles",
   {
     id: uuid().primaryKey(),
+    fullName: text(),
     accountState: text({ enum: ACCOUNT_STATES }).notNull().default("invited"),
     email: text().notNull(),
     mobile: text(),

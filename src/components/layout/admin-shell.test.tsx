@@ -11,6 +11,14 @@ describe("AdminShell", () => {
     expect(html).toContain("w-64");
     expect(html).toContain("grid-cols-12");
     expect(html).toContain("min-w-0");
+    expect(html.match(/<nav/g)).toHaveLength(2);
+    expect(html).not.toContain("<nav><nav");
+  });
+
+  it("keeps the no-rail layout single-column and omits the desktop aside", () => {
+    const html = renderToStaticMarkup(<AdminShell>Innehåll</AdminShell>);
+    expect(html).not.toContain("md:grid-cols-[256px_minmax(0,1fr)]");
+    expect(html).not.toContain("<aside");
   });
 
   it("omits bulk actions from phone check-in presentation", () => {

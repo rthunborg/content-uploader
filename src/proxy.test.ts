@@ -59,6 +59,10 @@ describe("proxy route gate", () => {
   it("allows authenticated requests", () => {
     expect(authRedirectFor("/tasks", "", true)).toBeNull();
   });
+
+  it("passes API requests to the DAL for canonical JSON authorization", () => {
+    expect(authRedirectFor("/api/ambassadors", "", false)).toBeNull();
+  });
 });
 
 describe("proxy provider boundary", () => {

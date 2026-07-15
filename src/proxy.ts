@@ -17,7 +17,9 @@ export function authRedirectFor(
   search: string,
   authenticated: boolean,
 ) {
-  if (authenticated || PUBLIC_APP_ROUTES.has(pathname)) {
+  // API routes must reach their DAL boundary so callers receive the canonical
+  // JSON auth envelope rather than an HTML login redirect.
+  if (authenticated || pathname.startsWith("/api/") || PUBLIC_APP_ROUTES.has(pathname)) {
     return null;
   }
 
