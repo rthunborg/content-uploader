@@ -54,6 +54,20 @@ export default defineConfig([
   ...nextTypescript,
   globalIgnores([".next/**", "node_modules/**"]),
   {
+    files: ["src/**/*.{ts,tsx}", "worker/**/*.ts"],
+    ignores: ["src/shared/logger.ts", "**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "console",
+          property: "error",
+          message: "Capture unexpected errors through the shared logger.",
+        },
+      ],
+    },
+  },
+  {
     files: ["src/shared/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [

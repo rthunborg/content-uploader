@@ -1,12 +1,27 @@
 type LogContext = Record<string, unknown>;
+export type LogTransport = (line: string) => void;
+
+const stdoutTransport: LogTransport = (line) => console.log(line);
+let transport: LogTransport = stdoutTransport;
+
+export function initializeLogger(nextTransport: LogTransport = stdoutTransport) {
+  if (typeof nextTransport !== "function") {
+    throw new TypeError("Logger transport must be a function");
+  }
+  transport = nextTransport;
+}
 
 const SENSITIVE_KEY =
   /(?:authorization|cookie|credential|pass(?:word|phrase)|secret|token|api[-_]?key|access[-_]?(?:key|token)|refresh[-_]?(?:key|token)|session(?:[-_]?(?:id|key|token))?|signing[-_]?key|private[-_]?key|dsn)/i;
 const SECRET_VALUE =
-  /(?:Bearer\s+\S+|sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:[^\s@/]+@)/gi;
+  /(?:Bearer\s+\S+|sb_secret_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+(?::[^\s@/]+)?@)/gi;
+const SENSITIVE_QUERY_VALUE =
+  /((?:^|[?&#])(?:[\w-]*(?:token|pass(?:word|phrase)?|pwd|secret|signature|credential|api[-_]?key|apikey|authorization)|sig|key|x-amz-(?:credential|security-token|signature))=)[^&#\s]+/gi;
 
 function sanitizeString(value: string) {
-  return value.replace(SECRET_VALUE, "[REDACTED]");
+  return value
+    .replace(SECRET_VALUE, "[REDACTED]")
+    .replace(SENSITIVE_QUERY_VALUE, "$1[REDACTED]");
 }
 
 function serializable(
@@ -74,7 +89,7 @@ function write(
   context: LogContext,
 ) {
   try {
-    console.error(
+    transport(
       JSON.stringify({
         timestamp: new Date().toISOString(),
         level,
@@ -85,7 +100,7 @@ function write(
     );
   } catch {
     try {
-      console.error('{"level":"error","event":"logger.serialization_failed"}');
+      stdoutTransport('{"level":"error","event":"logger.serialization_failed"}');
     } catch {
       // Logging must never interrupt the application path.
     }

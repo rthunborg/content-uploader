@@ -9,7 +9,7 @@ Ships in two releases: an **MVP** (request → upload → organize → export lo
 
 ## Status
 
-Planning complete and **implementation-ready**. Application code has not been scaffolded yet — the first development step is Epic 1, Story 1.1 (scaffold from the `with-supabase` Next.js starter, EU-pinned infrastructure).
+Platform-foundation implementation is in progress. Pull requests are gated by repository CI and production migrations/worker delivery run through the protected release workflow documented in [`docs/ci-cd.md`](docs/ci-cd.md).
 
 ## Planning artifacts
 
@@ -28,7 +28,7 @@ All planning documents live in [`_bmad-output/planning-artifacts/`](_bmad-output
 
 ## Key decisions (see `launch-decisions.md`)
 
-- **Stack:** Next.js 16 + Supabase (Postgres/Auth/Storage TUS/pgmq, Stockholm) + Vercel (arn1) + Railway worker (Amsterdam, ffmpeg) + Sentry EU. All data in EU regions.
+- **Stack:** Next.js 16 + Supabase (Postgres/Auth/Storage TUS/pgmq, Stockholm) + Vercel (arn1) + Railway worker (Amsterdam, ffmpeg). All data in EU regions.
 - **UI language:** **Swedish** for all user-facing copy.
 - **Typography:** Inter (SIL OFL), self-hosted.
 - **GDPR:** consent-as-comprehension, tamper-evident acceptance records, documented erasure runbook, EU-only data residency.
@@ -36,3 +36,7 @@ All planning documents live in [`_bmad-output/planning-artifacts/`](_bmad-output
 ## Tech stack (planned)
 
 TypeScript (strict) · Next.js 16 App Router · React 19 · Drizzle ORM · Zod v4 · TanStack Query · Tailwind v4 + shadcn/Radix · Uppy 5 (TUS uploads) · Vitest + Playwright + axe-core.
+
+## MVP logging
+
+Unexpected app and worker failures use one redacting structured-JSON seam and write to Vercel/Railway platform stdout logs in the configured EU regions. Domain errors remain product states and are not incident logs. Sentry is explicitly deferred until after MVP; the MVP has no Sentry dependency, DSN, client instrumentation, or runtime wiring.

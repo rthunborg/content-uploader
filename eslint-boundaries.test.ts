@@ -78,4 +78,21 @@ describe("architectural import boundaries", () => {
   ])("allows %s importing an approved layer", async (filePath, code) => {
     expect(await messagesFor(code, filePath)).toHaveLength(0);
   });
+
+  it("routes unexpected console errors through the shared logger", async () => {
+    const [result] = await eslint.lintText(
+      'console.log("worker ready"); console["error"]("unexpected", error);',
+      { filePath: "worker/example.ts" },
+    );
+    const consoleMessages = result.messages.filter(
+      ({ ruleId }) => ruleId === "no-restricted-properties",
+    );
+    expect(consoleMessages).toHaveLength(1);
+    expect(consoleMessages[0]?.message).toContain("shared logger");
+
+    const testConfig = await eslint.calculateConfigForFile(
+      "src/lib/example.test.ts",
+    );
+    expect(testConfig?.rules?.["no-restricted-properties"]).toBeUndefined();
+  });
 });

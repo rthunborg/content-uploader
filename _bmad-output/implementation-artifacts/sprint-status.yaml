@@ -56,7 +56,7 @@ development_status:
   1-4-magic-link-authentication-the-single-front-door: done
   1-5-dal-choke-point-auth-contexts-role-separation-revocation: done
   1-6-audit-event-emitter-registry: done
-  1-7-ci-cd-pipeline-error-logging-seam: backlog
+  1-7-ci-cd-pipeline-error-logging-seam: done
   epic-1-retrospective: optional
 
   # ===== Epic 2: Ambassador Accounts & Lifecycle Management =====

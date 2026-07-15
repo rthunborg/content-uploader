@@ -6,8 +6,9 @@ COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /ffprobe /usr/local/bin/ffprobe
 
 WORKDIR /app
-COPY index.ts ./index.ts
+COPY worker ./worker
+COPY src/shared ./src/shared
 
 USER node
 
-ENTRYPOINT ["node", "index.ts"]
+ENTRYPOINT ["node", "worker/index.ts"]

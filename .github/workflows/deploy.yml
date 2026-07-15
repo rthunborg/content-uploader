@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Production release
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Ignore stale successful quality runs
+        id: freshness
+        run: |
+          set -euo pipefail
+          remote_main_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ -z "$remote_main_sha" ]; then
+            echo "Could not resolve remote main head; failing rather than silently skipping the release." >&2
+            exit 1
+          fi
+          if [ "$remote_main_sha" != "$TESTED_SHA" ]; then
+            echo "Stale quality run for $TESTED_SHA; main is now $remote_main_sha."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+      - name: Link production Supabase project
+        if: steps.freshness.outputs.current == 'true'
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Apply production migrations
+        if: steps.freshness.outputs.current == 'true'
+        run: npx supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Deploy Railway worker
+        if: steps.freshness.outputs.current == 'true'
+        run: npx --yes @railway/cli@5.26.1 up --service "$RAILWAY_SERVICE_ID" --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
