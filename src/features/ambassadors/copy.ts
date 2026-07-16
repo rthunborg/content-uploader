@@ -8,6 +8,11 @@ export const ambassadorCopy = {
   fullName: "Fullständigt namn", mobileOptional: "Mobil (valfritt)", inviteSubmit: "Skicka inbjudan", invitePending: "Skickar inbjudan…",
   inviteAccepted: "Inbjudan har accepterats för leverans. Leveransen är ännu inte bekräftad.", inviteFailed: "Inbjudan kunde inte skickas. Uppgifterna finns kvar så att du kan försöka igen.",
   inviteConflict: "Det finns redan ett konto med den e-postadressen.", required: "Fältet måste fyllas i.", invalidEmail: "Ange en giltig e-postadress.", invalidMobile: "Ange ett giltigt mobilnummer.", tooLong: "Värdet är för långt.",
+  contactHeading: "Redigera kontaktuppgifter",
+  contactDuty: "Portalen är inte kopplad till något HR-system. Administratörer ansvarar därför för att hålla namn, e-post och mobil aktuella.",
+  contactSubmit: "Spara kontaktuppgifter", contactPending: "Sparar kontaktuppgifter…",
+  contactSaved: "Kontaktuppgifterna har sparats.", contactFailed: "Kontaktuppgifterna kunde inte sparas. Uppgifterna finns kvar så att du kan försöka igen.",
+  contactConflict: "E-postadressen används redan av ett annat konto.", contactNotFound: "Ambassadören kunde inte hittas. Ladda om sidan och försök igen.",
   validationFailed: "Kontrollera uppgifterna och försök igen.",
   today: "I dag", yesterday: "I går", future: "Framtida tid", daysAgo: (days: number) => `${days} dagar sedan`,
 } as const;

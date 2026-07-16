@@ -15,7 +15,11 @@ type LocalAuth = {
 function statusEnvironment() {
   let output: string;
   try {
-    output = execFileSync("npx", ["supabase", "status", "--output", "env"], {
+    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
+    const args = process.platform === "win32"
+      ? ["/d", "/s", "/c", "npx supabase --profile content-uploader status --output env"]
+      : ["supabase", "--profile", "content-uploader", "status", "--output", "env"];
+    output = execFileSync(command, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });

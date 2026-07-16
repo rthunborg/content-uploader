@@ -8,8 +8,9 @@ import { DomainError } from "@/lib/errors";
 import type { AccountState } from "@/shared/account-states";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { audit } from "@/shared/audit";
-import { logError } from "@/shared/logger";
+import { logCritical, logError } from "@/shared/logger";
 import { inviteAmbassadorSchema, type InviteAmbassadorInput } from "../schemas/invite-ambassador";
+import { updateAmbassadorSchema, type UpdateAmbassadorInput } from "../schemas/update-ambassador";
 
 export type AdminProfile = { id: string; fullName: string | null; email: string; mobile: string | null; accountState: AccountState; invitedAt: string | null; lastLoginAt: string | null };
 export type AmbassadorPage = { items: AdminProfile[]; nextCursor: string | null };
@@ -17,9 +18,148 @@ export type InviteAmbassadorResult = AdminProfile & { deliveryStatus: "accepted"
 export const AMBASSADOR_PAGE_SIZE = 25;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ambassadorIdentity = sql<boolean>`exists (select 1 from auth.users where auth.users.id = ${profiles.id} and (auth.users.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb)`;
+const AUTH_DUPLICATE_CODES = new Set(["email_exists", "user_already_exists", "identity_already_exists"]);
 
 function mapProfile(row: typeof profiles.$inferSelect): AdminProfile {
   return { id: row.id, fullName: row.fullName, email: row.email, mobile: row.mobile, accountState: row.accountState, invitedAt: row.invitedAt?.toISOString() ?? null, lastLoginAt: row.lastLoginAt?.toISOString() ?? null };
+}
+
+function authErrorContext(error: unknown) {
+  if (!error || typeof error !== "object") return { status: null, code: null };
+  return {
+    status: "status" in error && typeof error.status === "number" ? error.status : null,
+    code: "code" in error && typeof error.code === "string" ? error.code : null,
+  };
+}
+
+function normalizedAuthEmail(email: string | undefined | null) {
+  return email?.trim().toLowerCase() ?? null;
+}
+
+async function compensateAmbassadorAuthEmail({
+  admin,
+  attemptedEmail,
+  priorAuthEmail,
+  priorProfileEmail,
+  profileId,
+}: {
+  admin: ReturnType<typeof createAdminSupabaseClient>["auth"]["admin"];
+  attemptedEmail: string;
+  priorAuthEmail: string;
+  priorProfileEmail: string;
+  profileId: string;
+}) {
+  const reconciliationContext = {
+    profileId,
+    operation: "restoreAuthEmail",
+  };
+  const reconciliationRequired = (
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ) => {
+    logCritical("ambassador.contact_reconciliation_required", error, {
+      ...reconciliationContext,
+      ...context,
+    });
+  };
+
+  try {
+    await getDatabase().transaction(async (tx) => {
+      const [lockedProfile] = await tx.execute<{ id: string; email: string }>(sql`
+        select p.id, p.email
+        from public.profiles p
+        where p.id = ${profileId}
+        for update of p
+      `);
+      if (!lockedProfile) {
+        reconciliationRequired(new Error("Profile missing during Auth email reconciliation"), {
+          reason: "profile_missing",
+        });
+        return;
+      }
+
+      let authUserResponse;
+      try {
+        authUserResponse = await admin.getUserById(profileId);
+      } catch (error) {
+        reconciliationRequired(error, {
+          reason: "auth_lookup_threw",
+          ...authErrorContext(error),
+        });
+        return;
+      }
+      if (authUserResponse.error) {
+        reconciliationRequired(new Error("Auth lookup failed during email reconciliation"), {
+          reason: "auth_lookup_failed",
+          ...authErrorContext(authUserResponse.error),
+        });
+        return;
+      }
+
+      const currentAuthUser = authUserResponse.data.user;
+      const currentAuthEmail = normalizedAuthEmail(currentAuthUser?.email);
+      if (
+        !currentAuthUser
+        || currentAuthUser.id !== profileId
+        || !currentAuthEmail
+      ) {
+        reconciliationRequired(new Error("Auth identity was unsafe during email reconciliation"), {
+          reason: currentAuthUser?.id && currentAuthUser.id !== profileId
+            ? "auth_user_mismatch"
+            : "auth_identity_missing",
+        });
+        return;
+      }
+
+      if (currentAuthEmail === priorAuthEmail) return;
+
+      const currentProfileEmail = normalizedAuthEmail(lockedProfile.email);
+      if (currentProfileEmail !== priorProfileEmail) {
+        if (currentProfileEmail === currentAuthEmail) return;
+        reconciliationRequired(new Error("A newer profile edit has divergent Auth state"), {
+          reason: "newer_profile_auth_mismatch",
+        });
+        return;
+      }
+      if (currentAuthEmail !== attemptedEmail) {
+        reconciliationRequired(new Error("Auth email changed to an unexpected value"), {
+          reason: "unexpected_auth_email",
+        });
+        return;
+      }
+
+      let restored;
+      try {
+        restored = await admin.updateUserById(profileId, { email: priorAuthEmail });
+      } catch (error) {
+        reconciliationRequired(error, {
+          reason: "restore_threw",
+          ...authErrorContext(error),
+        });
+        return;
+      }
+      const restoredUser = restored.data.user;
+      if (
+        restored.error
+        || !restoredUser
+        || restoredUser.id !== profileId
+        || normalizedAuthEmail(restoredUser.email) !== priorAuthEmail
+      ) {
+        reconciliationRequired(
+          restored.error ?? new Error("Auth email restoration was not acknowledged"),
+          {
+            reason: "restore_failed",
+            ...authErrorContext(restored.error),
+          },
+        );
+      }
+    });
+  } catch (error) {
+    reconciliationRequired(error, {
+      reason: "profile_lock_failed",
+      ...authErrorContext(error),
+    });
+  }
 }
 
 export async function listAmbassadors(cursor?: string | null): Promise<AmbassadorPage> {
@@ -35,6 +175,171 @@ export async function getProfileForAdmin(profileId: string): Promise<AdminProfil
   const [row] = await getDatabase().select().from(profiles).where(and(eq(profiles.id, profileId), ambassadorIdentity)).limit(1);
   if (!row) throw new DomainError("NOT_FOUND");
   return mapProfile(row);
+}
+
+export async function updateAmbassadorContact(profileId: string, input: UpdateAmbassadorInput): Promise<AdminProfile> {
+  await requireAdmin();
+  if (!UUID_V4_PATTERN.test(profileId)) throw new DomainError("NOT_FOUND");
+  const parsed = updateAmbassadorSchema.safeParse(input);
+  if (!parsed.success) throw new DomainError("VALIDATION_FAILED");
+
+  const values = parsed.data;
+  const admin = createAdminSupabaseClient().auth.admin;
+  let priorAuthEmail: string | null = null;
+  let priorProfileEmail: string | null = null;
+  let forwardAuthUpdateAttempted = false;
+
+  try {
+    const updated = await getDatabase().transaction(async (tx) => {
+      const [target] = await tx.execute<{ id: string; email: string }>(sql`
+        select p.id, p.email
+        from public.profiles p
+        where p.id = ${profileId}
+          and exists (
+            select 1
+            from auth.users u
+            where u.id = p.id
+              and (u.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb
+          )
+        for update of p
+      `);
+      if (!target) throw new DomainError("NOT_FOUND");
+      priorProfileEmail = normalizedAuthEmail(target.email);
+      if (!priorProfileEmail) {
+        logError("ambassador.contact_persistence_failed", new Error("Profile has no email"), {
+          profileId,
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+
+      let authUserResponse;
+      try {
+        authUserResponse = await admin.getUserById(profileId);
+      } catch (error) {
+        logError("ambassador.contact_auth_lookup_failed", error, {
+          profileId,
+          operation: "getUserById",
+          ...authErrorContext(error),
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      if (authUserResponse.error) {
+        const context = authErrorContext(authUserResponse.error);
+        if (context.status === 404 || context.code === "user_not_found") throw new DomainError("NOT_FOUND");
+        logError("ambassador.contact_auth_lookup_failed", new Error("Auth user lookup failed"), {
+          profileId,
+          operation: "getUserById",
+          ...context,
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      const authUser = authUserResponse.data.user;
+      priorAuthEmail = normalizedAuthEmail(authUser?.email);
+      if (!authUser || authUser.id !== profileId || !priorAuthEmail) {
+        logError("ambassador.contact_auth_lookup_failed", new Error("Auth user identity did not match the profile"), {
+          profileId,
+          operation: "getUserById",
+          status: null,
+          code: null,
+          reason: authUser?.id && authUser.id !== profileId
+            ? "auth_user_mismatch"
+            : "auth_identity_missing",
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+
+      let duplicate;
+      try {
+        [duplicate] = await tx.execute<{ exists: boolean }>(sql`
+          select exists (
+            select 1
+            from public.profiles
+            where id <> ${profileId} and lower(email) = ${values.email}
+            union all
+            select 1
+            from auth.users
+            where id <> ${profileId} and lower(email) = ${values.email}
+          ) as exists
+        `);
+      } catch (error) {
+        logError("ambassador.contact_identity_lookup_failed", error, {
+          profileId,
+          operation: "identityExists",
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      if (duplicate?.exists) throw new DomainError("CONFLICT");
+
+      if (priorAuthEmail !== values.email) {
+        forwardAuthUpdateAttempted = true;
+        let authUpdate;
+        try {
+          authUpdate = await admin.updateUserById(profileId, { email: values.email });
+        } catch (error) {
+          logError("ambassador.contact_auth_update_failed", error, {
+            profileId,
+            operation: "updateUserById",
+            ...authErrorContext(error),
+          });
+          throw new DomainError("INTERNAL_ERROR");
+        }
+        if (authUpdate.error) {
+          const context = authErrorContext(authUpdate.error);
+          if (context.code && AUTH_DUPLICATE_CODES.has(context.code)) throw new DomainError("CONFLICT");
+          logError("ambassador.contact_auth_update_failed", new Error("Auth email update failed"), {
+            profileId,
+            operation: "updateUserById",
+            ...context,
+          });
+          throw new DomainError("INTERNAL_ERROR");
+        }
+        if (
+          !authUpdate.data.user
+          || authUpdate.data.user.id !== profileId
+          || normalizedAuthEmail(authUpdate.data.user.email) !== values.email
+        ) {
+          logError("ambassador.contact_auth_update_failed", new Error("Auth email update was not acknowledged"), {
+            profileId,
+            operation: "updateUserById",
+            status: null,
+            code: null,
+          });
+          throw new DomainError("INTERNAL_ERROR");
+        }
+      }
+
+      const [row] = await tx.update(profiles).set({
+        fullName: values.fullName,
+        email: values.email,
+        mobile: values.mobile,
+        updatedAt: new Date(),
+      }).where(and(eq(profiles.id, profileId), ambassadorIdentity)).returning();
+      if (!row) throw new DomainError("NOT_FOUND");
+      return row;
+    });
+
+    forwardAuthUpdateAttempted = false;
+    return mapProfile(updated);
+  } catch (error) {
+    if (
+      forwardAuthUpdateAttempted
+      && priorAuthEmail
+      && priorProfileEmail
+    ) {
+      await compensateAmbassadorAuthEmail({
+        admin,
+        attemptedEmail: values.email,
+        priorAuthEmail,
+        priorProfileEmail,
+        profileId,
+      });
+    }
+    if (!(error instanceof DomainError)) {
+      logError("ambassador.contact_persistence_failed", error, { profileId });
+      throw new DomainError("INTERNAL_ERROR");
+    }
+    throw error;
+  }
 }
 
 function confirmationRedirect() {

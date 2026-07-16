@@ -2,10 +2,11 @@
 title: 'Story 2.3: Maintain ambassador contact details'
 type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
-status: in-review
-baseline_revision: eea33ba31debb6b63f6bd9bc00926647843c6c94
+status: done
+baseline_revision: 71e0899a8f91bead48980f55144d811b2e19ec44
+final_revision: c0509889c4915d44440a7a5d580f4bab6bf47187
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -102,6 +103,16 @@ Addressed findings:
 
 Rejected findings were duplicates, outside this story's contract, or contradicted the approved architecture (including durable cross-process reconciliation, holding a database lock across provider calls, optimistic concurrency for last-write-wins contact edits, generic session-policy changes, and destructive provider/database fault injection).
 
+### 2026-07-16 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 1, low 1)
+- defer: 0
+- reject: 31
+- addressed_findings:
+  - `[medium]` `[patch]` Replaced the invalid Supabase CLI profile-file argument with the configured `content-uploader` profile name across Playwright and database integration environment discovery, and removed the unsupported YAML artifact.
+  - `[low]` `[patch]` Normalized accidental executable modes on the newly added TypeScript, TSX, and Playwright files.
+
 ## Design Notes
 
 The resolved product contract uses one email identity. `profiles.email` remains the authoritative source for future sends, while the matching Supabase Auth email controls passwordless login; a successful edit must leave both on the same normalized address. The server-side `auth.admin.updateUserById` operation applies an email change directly without the end-user confirmation flow. The DAL updates Auth before committing the profile transaction so notifications never switch to an address that cannot sign in, then restores the prior Auth email best-effort if the database operation fails. A contact edit does not call global sign-out; existing sessions are not deliberately revoked, and any provider-owned session behavior is handled by normal reauthentication at the new email.
@@ -124,3 +135,33 @@ Status: resolved for re-drive
 - Auth is updated before the matching profile transaction commits; a later database failure triggers best-effort restoration of the prior Auth email, with a separate reconciliation-critical log if compensation fails.
 - The application does not revoke sessions for contact maintenance. Deactivation, deletion, and withdrawal remain the explicit global-revocation paths.
 - No contact-update audit event is added because the architecture's audit registry is closed.
+
+## Auto Run Result
+
+Summary: Reviewed the restored ambassador contact-maintenance implementation against the amended one-email identity contract. The admin form, PATCH route, normalized profile persistence, Auth synchronization, compensation behavior, duplicate handling, session preservation, and acceptance coverage remain aligned. Review patches corrected Supabase CLI profile selection and file modes.
+
+Files changed:
+- `_bmad-output/implementation-artifacts/spec-2-3-maintain-ambassador-contact-details.md` — recorded review triage, verification, and completion metadata.
+- `src/features/ambassadors/schemas/update-ambassador.ts` and test — shared strict contact validation and normalization.
+- `src/features/ambassadors/dal/admin.ts`, unit tests, and integration test — admin-only synchronized Auth/profile contact mutation with compensation and persisted read verification.
+- `src/app/api/ambassadors/[profileId]/route.ts` and test — canonical PATCH mutation surface and validation envelopes.
+- `src/features/ambassadors/components/contact-form.tsx`, detail integration, copy, and tests — accessible retained-input server-ack edit experience and admin-duty guidance.
+- `e2e/ambassador-contact.spec.ts` and `e2e/fixtures/auth.ts` — end-to-end contact, identity, session, responsive, and accessibility coverage.
+- `playwright.config.ts` and database-backed integration helpers — local Supabase environment discovery using the configured `content-uploader` CLI profile.
+
+Review findings:
+- Patches applied: 2 (high 0, medium 1, low 1; recommendation score 4).
+- Items deferred: 0.
+- Items rejected: 31, including duplicates, speculative provider/process-failure architecture beyond the approved contract, explicitly rejected concurrency/session-policy expansions, and non-actionable verification suggestions.
+- Follow-up review recommended: false.
+
+Verification:
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test` — could not start because the checkout lacks the optional native module `@rolldown/binding-linux-x64-gnu`.
+- `npm run build` — could not compile CSS because the checkout lacks the optional native module `lightningcss.linux-x64-gnu`.
+- `npx supabase ...` and Playwright/local-Supabase verification — could not start because this checkout lacks the matching Linux Supabase CLI binary package.
+- `git diff --check` — passed after removing the trailing blank line.
+
+Residual risks:
+- Vitest, build, and Playwright should be rerun in an environment with the platform-specific npm optional dependencies and local Supabase CLI binary installed.
