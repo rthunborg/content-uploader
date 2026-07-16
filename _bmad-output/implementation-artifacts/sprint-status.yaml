@@ -69,8 +69,8 @@ development_status:
   epic-2-retrospective: optional
 
   # ===== Epic 3: Ambassador Onboarding & Consent =====
-  epic-3: backlog
-  3-1-versioned-terms-tamper-evident-acceptance-store: done
+  epic-3: in-progress
+  3-1-versioned-terms-tamper-evident-acceptance-store: in-progress
   3-2-first-login-consent-card-flow: backlog
   3-3-decline-pause-self-service-return: backlog
   3-4-re-accept-on-terms-change: backlog

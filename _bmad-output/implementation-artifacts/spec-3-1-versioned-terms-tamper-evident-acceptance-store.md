@@ -2,7 +2,7 @@
 title: 'Story 3.1: Versioned terms & tamper-evident acceptance store'
 type: 'feature'
 created: '2026-07-16'
-status: done
+status: in-review
 baseline_revision: 58f771fec8cd9cbbdd7c50bbb903cbab4c729754
 final_revision: d90f29825cb886a09d7312368b06cfa1365c1054
 review_loop_iteration: 0
@@ -87,6 +87,12 @@ warnings:
 - 2026-07-16 — Autonomous escalation resolution self-approved the recommended secure defaults: one global serialized chain with a signed head, fixed-order JSON-array HMAC payloads excluding encrypted PII, AES-256-GCM per-user envelope encryption under `CONSENT_PII_KEK`, and manifest-only terms publication with no fabricated production seed.
 
 ## Review Triage Log
+
+### 2026-07-16 — Independent Claude review pending
+- Claude review attempts 1 and 2 could not start because the local OAuth access token was revoked.
+- The launcher was repaired to use the configured Anthropic API key non-interactively.
+- Claude review attempt 3 then exited with `Credit balance is too low` before producing findings.
+- No independent Claude review was completed; this story remains `in-review` and Story 3.2 must not proceed until the external review gate succeeds.
 
 ### 2026-07-16 — Review pass
 - intent_gap: 0
