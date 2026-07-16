@@ -1,11 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { initializeLogger } from "../src/shared/logger";
-import { runWorker } from "./index";
+import { runWorker, startMaintenancePolling } from "./index";
 
 afterEach(() => {
   initializeLogger();
   vi.restoreAllMocks();
+});
+
+describe("maintenance polling", () => {
+  it("never overlaps polls while the prior consume is unresolved", async () => {
+    let release!: () => void; const pending = new Promise<void>((resolve) => { release = resolve; });
+    const consume = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(false); let tick!: () => void;
+    startMaintenancePolling(consume, (callback) => { tick = callback; return 1; });
+    expect(consume).toHaveBeenCalledOnce(); tick(); tick(); expect(consume).toHaveBeenCalledOnce();
+    release(); await pending; await Promise.resolve(); tick(); expect(consume).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("worker entry point", () => {
@@ -39,11 +49,13 @@ describe("worker entry point", () => {
     const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const keepAlive = vi.fn();
     const probeVersions = vi.fn();
+    const startMaintenance = vi.fn();
 
-    runWorker({ args: ["node", "worker/index.ts"], probeVersions, keepAlive });
+    runWorker({ args: ["node", "worker/index.ts"], probeVersions, keepAlive, startMaintenance });
 
     expect(probeVersions).toHaveBeenCalledOnce();
     expect(keepAlive).toHaveBeenCalledOnce();
+    expect(startMaintenance).toHaveBeenCalledOnce();
     const ready = output.mock.calls
       .map((call) => String(call[0]))
       .find((line) => line.includes("worker.ready"));

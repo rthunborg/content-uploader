@@ -19,3 +19,6 @@ export async function getOwnAccountState() {
   const context = await preConsentContext("getOwnAccountState");
   return context.accountState;
 }
+
+export async function getCurrentTerms() { await preConsentContext("getCurrentTerms"); const { readCurrentTerms } = await import("./terms"); return readCurrentTerms(); }
+export async function acceptTerms() { const context = await preConsentContext("acceptTerms"); const { profiles } = await import("@/db/schema"); const { getDatabase } = await import("@/db/client"); const { eq } = await import("drizzle-orm"); const [profile] = await getDatabase().select({ email: profiles.email, fullName: profiles.fullName }).from(profiles).where(eq(profiles.id, context.userId)).limit(1); if (!profile?.fullName) throw new Error("Complete identity is required"); const { appendAcceptance } = await import("./acceptance"); return appendAcceptance(context.userId, { email: profile.email, fullName: profile.fullName }); }

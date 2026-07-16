@@ -17,6 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "supabase db push",
     "create-admin": "tsx scripts/create-admin.ts"
+    ,"publish-terms": "tsx scripts/publish-terms.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.1",

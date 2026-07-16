@@ -2,9 +2,11 @@
 title: 'Story 3.1: Versioned terms & tamper-evident acceptance store'
 type: 'feature'
 created: '2026-07-16'
-status: ready-for-dev
+status: done
+baseline_revision: 58f771fec8cd9cbbdd7c50bbb903cbab4c729754
+final_revision: d90f29825cb886a09d7312368b06cfa1365c1054
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/consent-cards.md'
@@ -85,6 +87,74 @@ warnings:
 - 2026-07-16 — Autonomous escalation resolution self-approved the recommended secure defaults: one global serialized chain with a signed head, fixed-order JSON-array HMAC payloads excluding encrypted PII, AES-256-GCM per-user envelope encryption under `CONSENT_PII_KEK`, and manifest-only terms publication with no fabricated production seed.
 
 ## Review Triage Log
+
+### 2026-07-16 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 11: (high 5, medium 6, low 0)
+- defer: 0
+- reject: 6: (high 1, medium 4, low 1)
+- addressed_findings:
+  - `[high]` `[patch]` Reused one per-user DEK across acceptances and proved both snapshots remain decryptable until erasure.
+  - `[high]` `[patch]` Rejected acceptance after an erasure tombstone so callable DAL paths cannot corrupt the ledger.
+  - `[high]` `[patch]` Made the pristine empty-chain sentinel verifiable and added fresh-store coverage.
+  - `[high]` `[patch]` Made consent currency validate the complete signed ledger and added real-store state coverage.
+  - `[high]` `[patch]` Required both canonical cryptographic keys before terms publication and covered fail-closed cases.
+  - `[medium]` `[patch]` Prevented overlapping maintenance polls and tested long-running dispatch.
+  - `[medium]` `[patch]` Mirrored migration security constraints and indexes in the Drizzle schema.
+  - `[medium]` `[patch]` Made chain positions bigint-safe through writing, canonicalization, schema mapping, and verification.
+  - `[medium]` `[patch]` Unified strict canonical base64 key validation between app and worker.
+  - `[medium]` `[patch]` Added read-dispatch-delete, empty-queue, and no-delete-on-error consumer coverage.
+  - `[medium]` `[patch]` Added pre-consent authorization, identity, incomplete-profile, and current-terms boundary coverage.
+
+## Auto Run Result
+
+Status: done
+
+Summary: Implemented immutable versioned terms, a globally serialized tamper-evident acceptance/tombstone ledger, per-user AES-256-GCM envelope encryption and crypto-shredding, fail-closed consent currency, operational terms publication, and scheduled worker verification.
+
+Files changed:
+- `.env.example` — declared the empty `CONSENT_PII_KEK` configuration slot.
+- `eslint.config.mjs` — corrected the worker boundary rule to permit worker-local library imports while blocking app-only source layers.
+- `package.json` — exposed the operational terms publication command.
+- `scripts/publish-terms.ts` — added manifest-only terms publication.
+- `scripts/publish-terms.test.ts` — verified manifest forwarding without embedded legal copy.
+- `src/db/schema/index.ts` — exported the consent schema.
+- `src/db/schema/consent.ts` — defined immutable terms, wrapped PII keys, acceptance evidence, chain head, constraints, and indexes.
+- `src/db/schema/consent.test.ts` — verified schema-level security invariants.
+- `src/features/consent/crypto.ts` — implemented canonical hashing/HMACs, strict key parsing, and AES-256-GCM envelope primitives.
+- `src/features/consent/crypto.test.ts` — covered canonical payloads, bigint positions, signatures, envelope binding, and malformed keys.
+- `src/features/consent/dal/terms.ts` — implemented validated immutable publication and current-terms reads with transactional audit emission.
+- `src/features/consent/dal/acceptance.ts` — implemented serialized acceptance append, persistent per-user DEKs, and idempotent shred/tombstone behavior.
+- `src/features/consent/dal/consent-status.ts` — replaced the placeholder with cryptographically fail-closed current-consent evaluation.
+- `src/features/consent/dal/consent-status.test.ts` — covered provider success and fail-closed behavior.
+- `src/features/consent/dal/consent-store.integration.test.ts` — exercised publication, immutability, concurrency, erasure, and currency against migrated PostgreSQL.
+- `src/features/consent/dal/pre-consent.ts` — exposed allow-listed authenticated pre-consent operations.
+- `src/features/consent/dal/pre-consent.test.ts` — verified authorization, authoritative profile identity, and incomplete-profile rejection.
+- `supabase/migrations/20260716160000_story_3_1_consent_store.sql` — created protected consent tables, pgmq queue, and pg_cron schedule.
+- `vitest.config.ts` — serialized files that share the mutable local Supabase stack.
+- `worker/jobs/verify-acceptance-chain.ts` — implemented complete ledger/head/tombstone integrity verification and sanitized critical reporting.
+- `worker/jobs/verify-acceptance-chain.test.ts` — covered valid, empty, corrupted, reordered, forked, truncated, and invalid tombstone ledgers.
+- `worker/lib/database.ts` — added the worker session-mode PostgreSQL client.
+- `worker/lib/maintenance.ts` — added validated pgmq consumption and verification dispatch.
+- `worker/lib/maintenance.test.ts` — covered queue dispatch, exact deletion, empty queue, and failure retention.
+- `worker/index.ts` — started non-overlapping maintenance polling.
+- `worker/index.test.ts` — verified startup and overlapping-poll prevention.
+
+Review findings: 11 patches applied (high 5, medium 6, low 0); 0 items deferred; 6 items rejected as inconsistent with the intent's operational-manifest, immutable-audit, no-reaccept, or one-shot integrity-reporting contracts.
+
+Follow-up review recommendation: true — patched findings were high severity; patched-count score was `3 × 6 medium + 0 low = 18`.
+
+Verification:
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test` — passed: 440 tests, zero failures; 5 skipped.
+- Focused security tests — passed: 43/43.
+- Real PostgreSQL consent integration — passed: 7/7.
+- `npx supabase db reset` — passed; migrations, seed, queue, cron, and consent objects applied.
+- `git diff --check` — passed with line-ending warnings only.
+
+Residual risks: Production terms remain intentionally unpublished until Legal supplies the complete approved Swedish manifest. Serial file scheduling makes the full Vitest suite reliable against one mutable local Supabase stack but increases runtime to roughly ten minutes. Residual artifacts after the reviewed commit are this final status/result write-back in the spec and `package-lock.json` filesystem metadata/line-ending state; the lockfile has no content diff from the index and is not part of this change.
 
 ## Design Notes
 

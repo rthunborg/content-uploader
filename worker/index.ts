@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 import { initializeWorkerLogger, logCritical } from "./lib/logger.ts";
+import { consumeOneMaintenanceJob } from "./lib/maintenance.ts";
 
 initializeWorkerLogger();
 
@@ -20,12 +21,28 @@ type WorkerEntryOptions = {
   args?: string[];
   probeVersions?: () => void;
   keepAlive?: () => void;
+  startMaintenance?: () => void;
 };
+
+export function startMaintenancePolling(
+  consume: () => Promise<unknown> = consumeOneMaintenanceJob,
+  schedule: (callback: () => void, milliseconds: number) => unknown = setInterval,
+) {
+  let running = false;
+  const poll = () => {
+    if (running) return;
+    running = true;
+    void consume().catch((error: unknown) => logCritical("worker.maintenance_failed", error)).finally(() => { running = false; });
+  };
+  poll();
+  return schedule(poll, 60_000);
+}
 
 export function runWorker({
   args = process.argv,
   probeVersions = versions,
   keepAlive = () => setInterval(() => undefined, 60_000),
+  startMaintenance = () => { startMaintenancePolling(); },
 }: WorkerEntryOptions = {}) {
   try {
     probeVersions();
@@ -39,6 +56,7 @@ export function runWorker({
         region: process.env.RAILWAY_REPLICA_REGION ?? "not-reported",
       }),
     );
+    startMaintenance();
     keepAlive();
   } catch (error) {
     logCritical("worker.startup_failed", error);

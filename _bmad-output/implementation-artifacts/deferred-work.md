@@ -73,3 +73,10 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-3-maintain-ambassador-contact-details.md`
   summary: `src/db/schema/organization.integration.test.ts` was not migrated to the local `supabase status` DB-URL discovery that Story 2.3 applied to the other five integration suites, so it remains `describe.skip` on every host and in CI; it is also the one file whose fixtures could race the roster membership assertions if it were ever enabled as-is.
   evidence: `organization.integration.test.ts:4-5` still reads `process.env.TEST_DATABASE_URL` only, while `admin.integration.test.ts`, `db/schema/audit.integration.test.ts`, `db/schema/rls.integration.test.ts`, `lib/auth/revocation.integration.test.ts`, and `shared/audit.integration.test.ts` now fall back to `npx supabase --profile supabase/cli-profile.yaml status --output env`. `.github/workflows/ci.yml` never sets `TEST_DATABASE_URL`, so the organization schema suite (the sole verification of the campaigns/themes FK on-delete actions and CHECK constraints, per the Story 1.2 entry above) has never executed in CI. Migrating it is not a free change: it inserts `auth.users` rows with no `raw_app_meta_data` plus matching `profiles` rows, and `vitest.config.ts` leaves file parallelism on, so once discovered it would run concurrently with `admin.integration.test.ts` against the same database and make any full-set roster assertion flaky. Resolution: migrate it to the shared discovery helper and isolate its fixtures (or serialize the DB-backed files) in the same change.
+
+### DW-3: Follow-up review still recommended for 3-1-versioned-terms-tamper-evident-acceptance-store after the review budget was exhausted
+origin: review-budget-followup
+source_spec: `spec-3-1-versioned-terms-tamper-evident-acceptance-store.md`
+severity: low
+reason: Review budget (3 cycles) was exhausted with the story finalized (status: done, verify green) while the review pass kept recommending an independent follow-up. The work was committed by bmad-loop run 20260716-165759-33c2; this entry preserves the lingering follow-up recommendation for a deliberate later review.
+status: open

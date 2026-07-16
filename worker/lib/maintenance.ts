@@ -1,0 +1,6 @@
+import { z } from "zod";
+import { getWorkerSql } from "./database.ts";
+import { runAcceptanceChainVerification, type AcceptanceEvidenceReader, type EvidenceHead, type EvidenceRecord } from "../jobs/verify-acceptance-chain.ts";
+export const maintenanceJobSchema = z.object({ v: z.literal(1), name: z.literal("verify-acceptance-chain") }).strict();
+export async function dispatchMaintenanceJob(payload: unknown, reader?: AcceptanceEvidenceReader) { maintenanceJobSchema.parse(payload); const sql = getWorkerSql(); const evidence: AcceptanceEvidenceReader = reader ?? { records: () => sql<EvidenceRecord[]>`select id, record_type, user_id_snapshot, terms_version_id, terms_payload_sha256, occurred_at, chain_position, prev_hmac, hmac from public.acceptance_records order by chain_position`, head: async () => (await sql<EvidenceHead[]>`select chain_position, head_hmac, signature from public.acceptance_chain_head where singleton = 1`)[0] ?? null }; return runAcceptanceChainVerification(evidence); }
+export async function consumeOneMaintenanceJob() { const sql = getWorkerSql(); const [job] = await sql<{ msg_id: number; message: unknown }[]>`select msg_id, message from pgmq.read('maintenance_jobs', 60, 1)`; if (!job) return false; await dispatchMaintenanceJob(job.message); await sql`select pgmq.delete('maintenance_jobs', ${job.msg_id})`; return true; }
