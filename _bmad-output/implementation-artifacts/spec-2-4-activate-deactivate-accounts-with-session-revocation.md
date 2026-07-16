@@ -4,9 +4,9 @@ type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
 status: done
 baseline_revision: ab80f483011d545c43dd18bfedb8c32a61824d58
-final_revision: 54adf21
+final_revision: 8214547
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -80,6 +80,16 @@ warnings:
 
 ## Review Triage Log
 
+### 2026-07-16 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 0
+- defer: 0
+- reject: 4
+- addressed_findings:
+  - none
+- notes: Independent follow-up review over the committed diff (baseline `ab80f48`..`baccf21`) under all four lenses. Four candidates surfaced and were rejected: (1) default revocation uses raw SQL on `auth.sessions` instead of the Supabase Admin API — already evaluated and accepted as a documented residual risk in the prior pass (installed Admin API signs out by JWT, not user id), verified end-to-end by integration + E2E; (2) auth-failure on a lifecycle request logs `admin.contact_update_failed` — unavoidable because authorization precedes body parsing, cosmetic; (3) nested DB connection for revocation inside the transaction — `postgres` pool default `max` is 10 so no deadlock, and the separate-connection commit is the intended non-rollbackable side effect; (4) `auth.refresh_tokens` cascade not explicitly asserted — the app's real guard is network-validated `getUser()`/`requireUser()`, which is asserted (`SESSION_REVOKED`/`ACCOUNT_INACTIVE`), and the JWT-until-expiry limit is already a documented residual risk. No code changes were justified, so the prior verified implementation stands unchanged.
+
 ### 2026-07-16 — Review pass
 - intent_gap: 0
 - bad_spec: 0
@@ -141,3 +151,20 @@ Verification:
 Residual risks:
 - Default revocation is verified against local Supabase `auth.sessions` behavior and the app's direct database access; it remains coupled to Supabase Auth's session table shape because the installed Supabase Admin API signs out by JWT rather than by user id.
 - Issued access JWTs can remain cryptographically valid until expiry; the app still relies on network-validated guards plus account-state checks to deny deactivated users after revocation.
+
+## Follow-up Review Result (2026-07-16)
+
+Independent follow-up review pass over the committed implementation (diff `ab80f48`..`baccf21`) against the spec intent and baseline, applying the adversarial-general, edge-case-hunter, verification-gap, and intent-alignment lenses.
+
+Outcome:
+- Findings: intent_gap 0, bad_spec 0, patch 0, defer 0, reject 4.
+- No patches were justified, so no code changed and the committed implementation is unchanged.
+- The four rejected candidates and rationale are recorded in the `## Review Triage Log` follow-up entry; all were either already-accepted documented residual risks from the prior pass or cosmetic/by-design behavior.
+
+Verification:
+- No source or test files changed in this pass; the previously recorded verification (`typecheck`, `lint`, `npm test`, `build`, targeted Playwright and Vitest runs) remains valid and was not re-run because there was nothing new to verify.
+- `git diff --check` on the committed range: no whitespace or conflict-marker defects (only pre-existing CRLF advisories from the Windows-mounted checkout).
+
+Follow-up review recommendation: false (this pass patched 0 findings; score 0).
+
+Residual risks: unchanged from the prior result above.
