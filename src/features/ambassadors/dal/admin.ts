@@ -6,9 +6,14 @@ import { profiles } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { DomainError } from "@/lib/errors";
 import type { AccountState } from "@/shared/account-states";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { audit } from "@/shared/audit";
+import { logError } from "@/shared/logger";
+import { inviteAmbassadorSchema, type InviteAmbassadorInput } from "../schemas/invite-ambassador";
 
 export type AdminProfile = { id: string; fullName: string | null; email: string; mobile: string | null; accountState: AccountState; invitedAt: string | null; lastLoginAt: string | null };
 export type AmbassadorPage = { items: AdminProfile[]; nextCursor: string | null };
+export type InviteAmbassadorResult = AdminProfile & { deliveryStatus: "accepted" };
 export const AMBASSADOR_PAGE_SIZE = 25;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ambassadorIdentity = sql<boolean>`exists (select 1 from auth.users where auth.users.id = ${profiles.id} and (auth.users.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb)`;
@@ -30,4 +35,72 @@ export async function getProfileForAdmin(profileId: string): Promise<AdminProfil
   const [row] = await getDatabase().select().from(profiles).where(and(eq(profiles.id, profileId), ambassadorIdentity)).limit(1);
   if (!row) throw new DomainError("NOT_FOUND");
   return mapProfile(row);
+}
+
+function confirmationRedirect() {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured) throw new Error("NEXT_PUBLIC_APP_URL is required");
+  const url = new URL(configured);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1"))) throw new Error("Invitation redirect origin is not allow-listed");
+  return new URL("/auth/confirm?next=/", url.origin).toString();
+}
+
+export async function inviteAmbassador(input: InviteAmbassadorInput): Promise<InviteAmbassadorResult> {
+  const actor = await requireAdmin();
+  const parsed = inviteAmbassadorSchema.safeParse(input);
+  if (!parsed.success) throw new DomainError("VALIDATION_FAILED");
+  const values = parsed.data;
+  const db = getDatabase();
+  try {
+    const [duplicate] = await db.execute<{ exists: boolean }>(sql`select exists (
+      select 1 from public.profiles where lower(email) = ${values.email}
+      union all
+      select 1 from auth.users where lower(email) = ${values.email}
+    ) as exists`);
+    if (duplicate?.exists) throw new DomainError("CONFLICT");
+  } catch (error) {
+    if (error instanceof DomainError) throw error;
+    logError("ambassador.invite_identity_lookup_failed", error, { operation: "identityExists" });
+    throw new DomainError("INTERNAL_ERROR");
+  }
+
+  let redirectTo: string;
+  try { redirectTo = confirmationRedirect(); }
+  catch (error) {
+    logError("ambassador.invite_redirect_misconfigured", error, { operation: "confirmationRedirect" });
+    throw new DomainError("INTERNAL_ERROR");
+  }
+
+  const admin = createAdminSupabaseClient().auth.admin;
+  let invitedId: string;
+  try {
+    const invitation = await admin.inviteUserByEmail(values.email, { redirectTo });
+    // 422 alone is not proof of a duplicate: signup_disabled and email_address_invalid share it.
+    if (invitation.error?.code === "email_exists") throw new DomainError("CONFLICT");
+    if (invitation.error || !invitation.data.user?.id) {
+      logError("ambassador.invite_provider_failed", new Error("Provider rejected invitation"), { operation: "inviteUserByEmail", status: invitation.error?.status ?? null, code: invitation.error?.code ?? null });
+      throw new DomainError("INTERNAL_ERROR");
+    }
+    invitedId = invitation.data.user.id;
+  } catch (error) {
+    if (error instanceof DomainError) throw error;
+    logError("ambassador.invite_provider_failed", error, { operation: "inviteUserByEmail" });
+    throw new DomainError("INTERNAL_ERROR");
+  }
+
+  const invitedAt = new Date();
+  try {
+    const [created] = await db.transaction(async (tx) => {
+      const inserted = await tx.insert(profiles).values({ id: invitedId, fullName: values.fullName, email: values.email, mobile: values.mobile, accountState: "invited", invitedAt }).returning();
+      if (!inserted[0]) throw new Error("Profile insertion returned no row");
+      await audit.emit(tx, { type: "account.invited", actor: { id: actor.actorId, nameSnapshot: actor.actorNameSnapshot }, entity: { id: invitedId, snapshot: { fullName: values.fullName, email: values.email, mobile: values.mobile, accountState: "invited", invitedAt: invitedAt.toISOString(), deliveryStatus: "accepted" } } });
+      return inserted;
+    });
+    return { ...mapProfile(created), deliveryStatus: "accepted" };
+  } catch (error) {
+    try { const result = await admin.deleteUser(invitedId); if (result.error) logError("ambassador.invite_compensation_failed", result.error, { userId: invitedId }); }
+    catch (compensationError) { logError("ambassador.invite_compensation_failed", compensationError, { userId: invitedId }); }
+    logError("ambassador.invite_persistence_failed", error, { userId: invitedId });
+    throw new DomainError("INTERNAL_ERROR");
+  }
 }

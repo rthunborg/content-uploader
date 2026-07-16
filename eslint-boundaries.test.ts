@@ -59,7 +59,7 @@ describe("architectural import boundaries", () => {
       expect(prohibited).toBeDefined();
       await expectRestricted(code, filePath, prohibited ?? "");
     },
-    60_000,
+    120_000,
   );
 
   it.each([

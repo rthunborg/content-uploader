@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-function required(name: "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY") {
+function required(name: "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_SECRET_KEY") {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);
   return value;
@@ -10,7 +10,7 @@ function required(name: "SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY") {
 
 let client: SupabaseClient | undefined;
 export function createAdminSupabaseClient() {
-  client ??= createClient(required("SUPABASE_URL"), required("SUPABASE_SERVICE_ROLE_KEY"), {
+  client ??= createClient(required("NEXT_PUBLIC_SUPABASE_URL"), required("SUPABASE_SECRET_KEY"), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return client;

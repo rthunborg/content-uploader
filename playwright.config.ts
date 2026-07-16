@@ -41,6 +41,8 @@ export default defineConfig({
       ...process.env,
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+      SUPABASE_SECRET_KEY: local.SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY ?? "",
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000",
       // Auth confirmation now enters the server-only DAL to load profile state.
       // Forward the local database URL just as the deployed app receives DATABASE_URL.
       DATABASE_URL: local.DB_URL ?? process.env.DATABASE_URL ?? "",
