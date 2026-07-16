@@ -17,6 +17,7 @@ import { updateAmbassadorSchema, type UpdateAmbassadorInput } from "../schemas/u
 export type AdminProfile = { id: string; fullName: string | null; email: string; mobile: string | null; accountState: AccountState; invitedAt: string | null; lastLoginAt: string | null };
 export type AmbassadorPage = { items: AdminProfile[]; nextCursor: string | null };
 export type InviteAmbassadorResult = AdminProfile & { deliveryStatus: "accepted" };
+export type DeleteAccountResult = { id: string; deleted: true };
 export const AMBASSADOR_PAGE_SIZE = 25;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ambassadorIdentity = sql<boolean>`exists (select 1 from auth.users where auth.users.id = ${profiles.id} and (auth.users.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb)`;
@@ -34,6 +35,22 @@ function lifecycleSnapshot(row: ProfileRow, nextState: AccountState, updatedAt: 
     beforeAccountState: row.accountState,
     afterAccountState: nextState,
     updatedAt: updatedAt.toISOString(),
+  };
+}
+
+function snapshotTimestamp(value: Date | string | null) {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function deletionSnapshot(row: ProfileRow) {
+  return {
+    fullName: row.fullName,
+    email: row.email,
+    mobile: row.mobile,
+    accountState: row.accountState,
+    invitedAt: snapshotTimestamp(row.invitedAt),
+    lastLoginAt: snapshotTimestamp(row.lastLoginAt),
   };
 }
 
@@ -355,6 +372,19 @@ export async function updateAmbassadorContact(profileId: string, input: UpdateAm
   }
 }
 
+async function authUserNoLongerExists(
+  admin: ReturnType<typeof createAdminSupabaseClient>["auth"]["admin"],
+  profileId: string,
+) {
+  try {
+    const lookup = await admin.getUserById(profileId);
+    const context = authErrorContext(lookup.error);
+    return context.status === 404 || context.code === "user_not_found";
+  } catch {
+    return false;
+  }
+}
+
 export async function updateAmbassadorLifecycle(profileId: string, input: AccountLifecycleInput): Promise<AdminProfile> {
   const actor = await requireAdmin();
   if (!UUID_V4_PATTERN.test(profileId)) throw new DomainError("NOT_FOUND");
@@ -461,6 +491,107 @@ export async function updateAmbassadorLifecycle(profileId: string, input: Accoun
       revocationAttempted,
       revocationSucceeded,
     });
+    throw new DomainError("INTERNAL_ERROR");
+  }
+}
+
+export async function deleteAccount(profileId: string): Promise<DeleteAccountResult> {
+  const actor = await requireAdmin();
+  if (!UUID_V4_PATTERN.test(profileId)) throw new DomainError("NOT_FOUND");
+
+  const admin = createAdminSupabaseClient().auth.admin;
+  let authDeleted = false;
+  try {
+    return await getDatabase().transaction(async (tx) => {
+      const [target] = await tx.execute<ProfileRow>(sql`
+        select
+          p.id,
+          p.full_name as "fullName",
+          p.email,
+          p.mobile,
+          p.account_state as "accountState",
+          p.invited_at as "invitedAt",
+          p.first_accepted_at as "firstAcceptedAt",
+          p.first_upload_at as "firstUploadAt",
+          p.last_login_at as "lastLoginAt",
+          p.created_at as "createdAt",
+          p.updated_at as "updatedAt"
+        from public.profiles p
+        where p.id = ${profileId}
+          and exists (
+            select 1
+            from auth.users u
+            where u.id = p.id
+              and (u.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb
+          )
+        for update of p
+      `);
+      if (!target) throw new DomainError("NOT_FOUND");
+
+      try {
+        await revokeAllUserSessions(profileId);
+      } catch (error) {
+        logError("ambassador.deletion_revocation_failed", error, {
+          profileId,
+          operation: "revokeAllUserSessions",
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+
+      let deletion;
+      try {
+        deletion = await admin.deleteUser(profileId);
+      } catch (error) {
+        if (await authUserNoLongerExists(admin, profileId)) {
+          authDeleted = true;
+          throw error;
+        }
+        logError("ambassador.deletion_provider_failed", error, {
+          profileId,
+          operation: "deleteUser",
+          ...authErrorContext(error),
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      if (deletion.error) {
+        if (await authUserNoLongerExists(admin, profileId)) {
+          authDeleted = true;
+          throw deletion.error;
+        }
+        logError("ambassador.deletion_provider_failed", new Error("Auth user deletion failed"), {
+          profileId,
+          operation: "deleteUser",
+          ...authErrorContext(deletion.error),
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      authDeleted = true;
+
+      const [deleted] = await tx.delete(profiles)
+        .where(eq(profiles.id, profileId))
+        .returning({ id: profiles.id });
+      if (!deleted) throw new Error("Profile deletion returned no row");
+
+      await audit.emit(tx, {
+        type: "account.deleted",
+        actor: { id: actor.actorId, nameSnapshot: actor.actorNameSnapshot },
+        entity: { id: profileId, snapshot: deletionSnapshot(target) },
+      });
+      return { id: profileId, deleted: true };
+    });
+  } catch (error) {
+    if (authDeleted) {
+      logCritical("ambassador.deletion_reconciliation_required", error, {
+        profileId,
+        operation: "deleteAccount",
+        authDeleted: true,
+        profileDeletionCommitted: false,
+        auditCommitted: false,
+      });
+      throw new DomainError("INTERNAL_ERROR");
+    }
+    if (error instanceof DomainError) throw error;
+    logError("ambassador.deletion_persistence_failed", error, { profileId });
     throw new DomainError("INTERNAL_ERROR");
   }
 }

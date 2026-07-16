@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ZodError } from "zod";
 
 import { ambassadorCopy } from "@/features/ambassadors/copy";
-import { getProfileForAdmin, updateAmbassadorContact, updateAmbassadorLifecycle } from "@/features/ambassadors/dal/admin";
+import { deleteAccount, getProfileForAdmin, updateAmbassadorContact, updateAmbassadorLifecycle } from "@/features/ambassadors/dal/admin";
 import { accountLifecycleSchema } from "@/features/ambassadors/schemas/account-lifecycle";
 import { updateAmbassadorSchema } from "@/features/ambassadors/schemas/update-ambassador";
 import { requireAdmin } from "@/lib/auth";
@@ -56,6 +56,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
       }, { status: 422 });
     }
     const response = toErrorResponse(error, failureEvent);
+    return NextResponse.json(response.body, { status: response.status });
+  }
+}
+
+export async function DELETE(_request: NextRequest, context: { params: Promise<{ profileId: string }> }) {
+  try {
+    await requireAdmin();
+    const { profileId } = await context.params;
+    return NextResponse.json(await deleteAccount(profileId));
+  } catch (error) {
+    const response = toErrorResponse(error, "admin.account_delete_failed");
     return NextResponse.json(response.body, { status: response.status });
   }
 }

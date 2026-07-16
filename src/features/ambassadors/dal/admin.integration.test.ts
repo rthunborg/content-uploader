@@ -17,6 +17,7 @@ vi.mock("@/lib/auth", () => ({
 const authAdmin = vi.hoisted(() => ({
   getUserById: vi.fn(),
   updateUserById: vi.fn(),
+  deleteUser: vi.fn(),
 }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminSupabaseClient: () => ({ auth: { admin: authAdmin } }),
@@ -79,6 +80,7 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
   beforeEach(() => {
     authAdmin.getUserById.mockReset();
     authAdmin.updateUserById.mockReset();
+    authAdmin.deleteUser.mockReset();
     auth.revokeUserSessionsById.mockReset();
     auth.revokeUserSessionsById.mockResolvedValue(undefined);
   });
@@ -281,5 +283,52 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
     expect(persisted.account_state).toBe("active");
     expect(await sql`select id from audit_events where entity_id = ${targetId} and event_type = 'account.deactivated'`)
       .toHaveLength(0);
+  });
+
+  it("deletes Auth and profile while retaining unrelated content and durable snapshot evidence", async () => {
+    const [authUser] = await sql<{ id: string }[]>`
+      insert into auth.users (id, email, raw_app_meta_data)
+      values (gen_random_uuid(), ${`${prefix}delete@example.test`}, '{}'::jsonb)
+      returning id
+    `;
+    const targetId = authUser.id;
+    await sql`
+      insert into profiles (id, full_name, email, mobile, account_state, invited_at, last_login_at)
+      values (${targetId}, 'Delete Ambassador', ${`${prefix}delete@example.test`}, '+46701111111', 'inactive_withdrawn', now(), now())
+    `;
+    const [asset] = await sql<{ id: string }[]>`insert into assets default values returning id`;
+    authAdmin.deleteUser.mockImplementation(async (id: string) => {
+      await sql`delete from auth.users where id = ${id}`;
+      return { error: null };
+    });
+
+    const { deleteAccount, getProfileForAdmin } = await import("./admin");
+    await expect(deleteAccount(targetId)).resolves.toEqual({ id: targetId, deleted: true });
+
+    expect(auth.revokeUserSessionsById).toHaveBeenCalledWith(targetId);
+    expect(await sql`select id from auth.users where id = ${targetId}`).toHaveLength(0);
+    expect(await sql`select id from profiles where id = ${targetId}`).toHaveLength(0);
+    await expect(getProfileForAdmin(targetId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await sql`select id from assets where id = ${asset.id}`).toHaveLength(1);
+    const evidence = await sql<{
+      actor_id: string;
+      entity_snapshot: { fullName: string; email: string; mobile: string; accountState: string };
+    }[]>`
+      select actor_id, entity_snapshot
+      from audit_events
+      where entity_id = ${targetId} and event_type = 'account.deleted'
+    `;
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({
+      actor_id: "00000000-0000-4000-8000-000000000009",
+      entity_snapshot: {
+        fullName: "Delete Ambassador",
+        email: `${prefix}delete@example.test`,
+        mobile: "+46701111111",
+        accountState: "inactive_withdrawn",
+      },
+    });
+
+    await sql`delete from assets where id = ${asset.id}`;
   });
 });

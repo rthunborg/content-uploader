@@ -27,6 +27,13 @@ export const ambassadorCopy = {
   lifecycleFailed: "Kontoåtkomsten kunde inte uppdateras. Försök igen.",
   lifecycleConflict: "Kontoåtkomsten kan inte ändras från den här statusen.",
   lifecycleNotFound: "Ambassadören kunde inte hittas. Ladda om sidan och försök igen.",
+  deleteHeading: "Ta bort kontopost",
+  deleteBody: "Detta tar bara bort kontot och kontaktuppgifterna. Uppladdningar och dokumenterad villkorsacceptans finns kvar.",
+  deleteConfirm: "Jag förstår att kontot och kontaktuppgifterna tas bort permanent.",
+  deleteSubmit: "Ta bort kontopost",
+  deletePending: "Tar bort kontoposten…",
+  deleteFailed: "Kontoposten kunde inte tas bort. Försök igen.",
+  deleteNotFound: "Ambassadören finns inte längre.",
   validationFailed: "Kontrollera uppgifterna och försök igen.",
   today: "I dag", yesterday: "I går", future: "Framtida tid", daysAgo: (days: number) => `${days} dagar sedan`,
 } as const;

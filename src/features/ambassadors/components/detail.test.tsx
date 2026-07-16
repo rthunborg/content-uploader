@@ -52,6 +52,8 @@ describe("AmbassadorDetail", () => {
     expect(screen.getByText(/HR-system/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Spara kontaktuppgifter" }).className)
       .toContain("min-h-11");
+    expect(screen.getByRole("heading", { name: "Ta bort kontopost" })).toBeTruthy();
+    expect(screen.getByText(/Uppladdningar och dokumenterad villkorsacceptans finns kvar/)).toBeTruthy();
   });
 
   it("remounts the contact form when the routed ambassador changes", () => {

@@ -3,6 +3,7 @@ const dal = vi.hoisted(() => ({
   getProfileForAdmin: vi.fn(),
   updateAmbassadorContact: vi.fn(),
   updateAmbassadorLifecycle: vi.fn(),
+  deleteAccount: vi.fn(),
   requireAdmin: vi.fn(),
   toErrorResponse: vi.fn(),
 }));
@@ -10,6 +11,7 @@ vi.mock("@/features/ambassadors/dal/admin", () => ({
   getProfileForAdmin: dal.getProfileForAdmin,
   updateAmbassadorContact: dal.updateAmbassadorContact,
   updateAmbassadorLifecycle: dal.updateAmbassadorLifecycle,
+  deleteAccount: dal.deleteAccount,
 }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: dal.requireAdmin }));
 vi.mock("@/lib/errors", async (importOriginal) => {
@@ -43,7 +45,7 @@ vi.mock("@/lib/errors", async (importOriginal) => {
 });
 import { DomainError, toErrorResponse } from "@/lib/errors";
 import { NextRequest } from "next/server";
-import { GET, PATCH } from "./route";
+import { DELETE, GET, PATCH } from "./route";
 describe("GET /api/ambassadors/[profileId]", () => {
   beforeEach(() => vi.clearAllMocks());
   it.each([["NOT_FOUND", 404], ["AUTH_REQUIRED", 401], ["FORBIDDEN", 403]] as const)("returns the canonical %s envelope", async (code, status) => { dal.getProfileForAdmin.mockRejectedValue(new DomainError(code)); const response = await GET(new Request("http://local") as never, { params: Promise.resolve({ profileId: "bad" }) }); expect(response.status).toBe(status); expect(await response.json()).toMatchObject({ error: { code } }); });
@@ -232,4 +234,58 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
     expect(await response.json()).toMatchObject({ error: { code } });
     expect(toErrorResponse).toHaveBeenCalledWith(expect.anything(), "admin.lifecycle_update_failed");
   });
+});
+
+describe("DELETE /api/ambassadors/[profileId]", () => {
+  const profileId = "00000000-0000-4000-8000-000000000001";
+  const context = { params: Promise.resolve({ profileId }) };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dal.requireAdmin.mockResolvedValue({ role: "admin" });
+    dal.deleteAccount.mockResolvedValue({ id: profileId, deleted: true });
+  });
+
+  it("authorizes before resolving params or invoking deletion", async () => {
+    const order: string[] = [];
+    dal.requireAdmin.mockImplementation(async () => {
+      order.push("auth");
+      throw new DomainError("FORBIDDEN");
+    });
+    const guardedParams = {
+      then: (resolve: (value: { profileId: string }) => void) => {
+        order.push("params");
+        resolve({ profileId });
+      },
+    } as Promise<{ profileId: string }>;
+    const response = await DELETE(new NextRequest("http://local/api/ambassadors/x", {
+      method: "DELETE",
+      body: "ignored",
+    }), { params: guardedParams });
+    expect(response.status).toBe(403);
+    expect(dal.deleteAccount).not.toHaveBeenCalled();
+    expect(order).toEqual(["auth"]);
+  });
+
+  it("returns the acknowledged deletion result", async () => {
+    const response = await DELETE(new NextRequest("http://local/api/ambassadors/x", {
+      method: "DELETE",
+    }), context);
+    expect(response.status).toBe(200);
+    expect(dal.deleteAccount).toHaveBeenCalledWith(profileId);
+    expect(await response.json()).toEqual({ id: profileId, deleted: true });
+  });
+
+  it.each([["NOT_FOUND", 404], ["INTERNAL_ERROR", 500]] as const)(
+    "maps %s through the canonical envelope",
+    async (code, status) => {
+      dal.deleteAccount.mockRejectedValue(new DomainError(code));
+      const response = await DELETE(new NextRequest("http://local/api/ambassadors/x", {
+        method: "DELETE",
+      }), context);
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: { code } });
+      expect(toErrorResponse).toHaveBeenCalledWith(expect.anything(), "admin.account_delete_failed");
+    },
+  );
 });

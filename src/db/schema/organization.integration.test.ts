@@ -147,7 +147,6 @@ describeDatabase("organization schema against migrated Postgres", () => {
           "asset_campaigns_asset_id_assets_id_fk",
           "asset_campaigns_campaign_id_campaigns_id_fk",
           "campaigns_theme_id_themes_id_fk",
-          "profiles_id_auth_users_id_fk",
           "asset_themes_asset_id_assets_id_fk",
           "asset_themes_theme_id_themes_id_fk",
         ]})
@@ -156,10 +155,18 @@ describeDatabase("organization schema against migrated Postgres", () => {
       asset_campaigns_asset_id_assets_id_fk: "c",
       asset_campaigns_campaign_id_campaigns_id_fk: "r",
       campaigns_theme_id_themes_id_fk: "n",
-      profiles_id_auth_users_id_fk: "c",
       asset_themes_asset_id_assets_id_fk: "c",
       asset_themes_theme_id_themes_id_fk: "r",
     });
+
+    const [profileIdentityTrigger] = await sql<{ enabled: string }[]>`
+      select tgenabled as enabled
+      from pg_trigger
+      where tgrelid = 'public.profiles'::regclass
+        and tgname = 'profiles_require_auth_identity'
+        and not tgisinternal
+    `;
+    expect(profileIdentityTrigger?.enabled).toBe("O");
 
     await expect(
       sql.begin(async (transaction) => {
