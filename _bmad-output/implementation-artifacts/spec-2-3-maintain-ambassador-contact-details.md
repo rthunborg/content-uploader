@@ -2,8 +2,9 @@
 title: 'Story 2.3: Maintain ambassador contact details'
 type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
-status: in-review
+status: done
 baseline_revision: 71e0899a8f91bead48980f55144d811b2e19ec44
+final_revision: cc168c1
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
