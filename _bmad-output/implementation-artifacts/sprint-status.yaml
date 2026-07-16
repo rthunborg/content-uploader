@@ -64,7 +64,7 @@ development_status:
   2-1-ambassador-roster-activity-view: done
   2-2-invite-ambassadors-by-email: done
   2-3-maintain-ambassador-contact-details: done
-  2-4-activate-deactivate-accounts-with-session-revocation: backlog
+  2-4-activate-deactivate-accounts-with-session-revocation: done
   2-5-delete-ambassador-account-record: backlog
   epic-2-retrospective: optional
 
