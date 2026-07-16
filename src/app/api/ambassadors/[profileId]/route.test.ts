@@ -2,14 +2,46 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dal = vi.hoisted(() => ({
   getProfileForAdmin: vi.fn(),
   updateAmbassadorContact: vi.fn(),
+  updateAmbassadorLifecycle: vi.fn(),
   requireAdmin: vi.fn(),
+  toErrorResponse: vi.fn(),
 }));
 vi.mock("@/features/ambassadors/dal/admin", () => ({
   getProfileForAdmin: dal.getProfileForAdmin,
   updateAmbassadorContact: dal.updateAmbassadorContact,
+  updateAmbassadorLifecycle: dal.updateAmbassadorLifecycle,
 }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: dal.requireAdmin }));
-import { DomainError } from "@/lib/errors";
+vi.mock("@/lib/errors", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/errors")>();
+  const statuses: Record<string, number> = {
+    AUTH_REQUIRED: 401,
+    SESSION_REVOKED: 401,
+    FORBIDDEN: 403,
+    ACCOUNT_INACTIVE: 403,
+    NOT_FOUND: 404,
+    CONSENT_REQUIRED: 409,
+    CONFLICT: 409,
+    VALIDATION_FAILED: 422,
+    INTERNAL_ERROR: 500,
+  };
+  return {
+    ...actual,
+    toErrorResponse: dal.toErrorResponse.mockImplementation((error: unknown) => {
+      if (error instanceof actual.DomainError) {
+        return {
+          status: statuses[error.code] ?? 500,
+          body: { error: { code: error.code, message: error.message } },
+        };
+      }
+      return {
+        status: 500,
+        body: { error: { code: "INTERNAL_ERROR", message: "Ett oväntat fel inträffade." } },
+      };
+    }),
+  };
+});
+import { DomainError, toErrorResponse } from "@/lib/errors";
 import { NextRequest } from "next/server";
 import { GET, PATCH } from "./route";
 describe("GET /api/ambassadors/[profileId]", () => {
@@ -33,8 +65,13 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    dal.toErrorResponse.mockClear();
     dal.requireAdmin.mockResolvedValue({ role: "admin" });
     dal.updateAmbassadorContact.mockResolvedValue(payload);
+    dal.updateAmbassadorLifecycle.mockResolvedValue({
+      ...payload,
+      accountState: "deactivated",
+    });
   });
 
   it("authorizes before parsing JSON or invoking the mutation", async () => {
@@ -66,7 +103,22 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
       email: "anna.ny@example.com",
       mobile: null,
     });
+    expect(dal.updateAmbassadorLifecycle).not.toHaveBeenCalled();
     expect(await response.json()).toEqual(payload);
+  });
+
+  it("routes strict lifecycle actions to the lifecycle mutation", async () => {
+    const response = await PATCH(new NextRequest("http://local/api/ambassadors/x", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "deactivate" }),
+    }), context);
+
+    expect(response.status).toBe(200);
+    expect(dal.updateAmbassadorLifecycle).toHaveBeenCalledWith(profileId, {
+      action: "deactivate",
+    });
+    expect(dal.updateAmbassadorContact).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ accountState: "deactivated" });
   });
 
   it("returns perceivable field errors without calling the mutation", async () => {
@@ -119,6 +171,10 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
       mobile: null,
       accountState: "deactivated",
     })],
+    ["an action with extra contact fields", JSON.stringify({
+      action: "deactivate",
+      fullName: "Anna",
+    })],
   ])("returns safe validation failure for %s", async (_case, body) => {
     const response = await PATCH(new NextRequest("http://local/api/ambassadors/x", {
       method: "PATCH",
@@ -130,6 +186,7 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
       error: { code: "VALIDATION_FAILED", message: "Kontrollera uppgifterna och försök igen." },
     });
     expect(dal.updateAmbassadorContact).not.toHaveBeenCalled();
+    expect(dal.updateAmbassadorLifecycle).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -156,5 +213,23 @@ describe("PATCH /api/ambassadors/[profileId]", () => {
 
     expect(response.status).toBe(status);
     expect(await response.json()).toMatchObject({ error: { code } });
+    expect(toErrorResponse).toHaveBeenCalledWith(expect.anything(), "admin.contact_update_failed");
+  });
+
+  it.each([
+    ["NOT_FOUND", 404],
+    ["CONFLICT", 409],
+    ["INTERNAL_ERROR", 500],
+  ] as const)("maps lifecycle %s through the canonical error envelope", async (code, status) => {
+    dal.updateAmbassadorLifecycle.mockRejectedValue(new DomainError(code));
+
+    const response = await PATCH(new NextRequest("http://local/api/ambassadors/x", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "reactivate" }),
+    }), context);
+
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ error: { code } });
+    expect(toErrorResponse).toHaveBeenCalledWith(expect.anything(), "admin.lifecycle_update_failed");
   });
 });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { profiles, type ProfileRow } from "@/db/schema";
@@ -85,6 +85,9 @@ export const requireUser = guards.requireUser;
 export const requireAdmin = guards.requireAdmin;
 export const requireUserPreConsent = guards.requireUserPreConsent;
 export function systemContext(): SystemContext { return { actorId: null, actorNameSnapshot: "system", role: "system" }; }
+export async function revokeUserSessionsById(userId: string) {
+  await getDatabase().execute(sql`delete from auth.sessions where user_id = ${userId}::uuid`);
+}
 
 export async function requireUserOrRedirect(next = "/") {
   try { return await requireUser(); } catch (error) {

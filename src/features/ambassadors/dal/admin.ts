@@ -2,13 +2,15 @@ import "server-only";
 
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
-import { profiles } from "@/db/schema";
+import { profiles, type ProfileRow } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
+import { revokeAllUserSessions } from "@/lib/auth/revocation";
 import { DomainError } from "@/lib/errors";
 import type { AccountState } from "@/shared/account-states";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { audit } from "@/shared/audit";
 import { logCritical, logError } from "@/shared/logger";
+import { accountLifecycleSchema, type AccountLifecycleInput } from "../schemas/account-lifecycle";
 import { inviteAmbassadorSchema, type InviteAmbassadorInput } from "../schemas/invite-ambassador";
 import { updateAmbassadorSchema, type UpdateAmbassadorInput } from "../schemas/update-ambassador";
 
@@ -22,6 +24,17 @@ const AUTH_DUPLICATE_CODES = new Set(["email_exists", "user_already_exists", "id
 
 function mapProfile(row: typeof profiles.$inferSelect): AdminProfile {
   return { id: row.id, fullName: row.fullName, email: row.email, mobile: row.mobile, accountState: row.accountState, invitedAt: row.invitedAt?.toISOString() ?? null, lastLoginAt: row.lastLoginAt?.toISOString() ?? null };
+}
+
+function lifecycleSnapshot(row: ProfileRow, nextState: AccountState, updatedAt: Date) {
+  return {
+    fullName: row.fullName,
+    email: row.email,
+    mobile: row.mobile,
+    beforeAccountState: row.accountState,
+    afterAccountState: nextState,
+    updatedAt: updatedAt.toISOString(),
+  };
 }
 
 function authErrorContext(error: unknown) {
@@ -339,6 +352,116 @@ export async function updateAmbassadorContact(profileId: string, input: UpdateAm
       throw new DomainError("INTERNAL_ERROR");
     }
     throw error;
+  }
+}
+
+export async function updateAmbassadorLifecycle(profileId: string, input: AccountLifecycleInput): Promise<AdminProfile> {
+  const actor = await requireAdmin();
+  if (!UUID_V4_PATTERN.test(profileId)) throw new DomainError("NOT_FOUND");
+  const parsed = accountLifecycleSchema.safeParse(input);
+  if (!parsed.success) throw new DomainError("VALIDATION_FAILED");
+
+  const { action } = parsed.data;
+  let revocationAttempted = false;
+  let revocationSucceeded = false;
+  try {
+    const updated = await getDatabase().transaction(async (tx) => {
+      const [target] = await tx.execute<ProfileRow>(sql`
+        select
+          p.id,
+          p.full_name as "fullName",
+          p.email,
+          p.mobile,
+          p.account_state as "accountState",
+          p.invited_at as "invitedAt",
+          p.first_accepted_at as "firstAcceptedAt",
+          p.first_upload_at as "firstUploadAt",
+          p.last_login_at as "lastLoginAt",
+          p.created_at as "createdAt",
+          p.updated_at as "updatedAt"
+        from public.profiles p
+        where p.id = ${profileId}
+          and exists (
+            select 1
+            from auth.users u
+            where u.id = p.id
+              and (u.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb
+          )
+        for update of p
+      `);
+      if (!target) throw new DomainError("NOT_FOUND");
+
+      if (action === "deactivate") {
+        if (target.accountState === "deactivated") return target;
+        if (target.accountState !== "active" && target.accountState !== "invited") throw new DomainError("CONFLICT");
+        revocationAttempted = true;
+        try {
+          await revokeAllUserSessions(profileId);
+          revocationSucceeded = true;
+        } catch (error) {
+          logError("ambassador.lifecycle_revocation_failed", error, {
+            profileId,
+            operation: "revokeAllUserSessions",
+          });
+          throw new DomainError("INTERNAL_ERROR");
+        }
+        const updatedAt = new Date();
+        const [row] = await tx.update(profiles).set({
+          accountState: "deactivated",
+          updatedAt,
+        }).where(and(eq(profiles.id, profileId), ambassadorIdentity)).returning();
+        if (!row) throw new DomainError("NOT_FOUND");
+        await audit.emit(tx, {
+          type: "account.deactivated",
+          actor: { id: actor.actorId, nameSnapshot: actor.actorNameSnapshot },
+          entity: {
+            id: profileId,
+            snapshot: lifecycleSnapshot(target, "deactivated", updatedAt),
+          },
+        });
+        return row;
+      }
+
+      if (target.accountState === "active") return target;
+      if (target.accountState !== "deactivated") throw new DomainError("CONFLICT");
+      const updatedAt = new Date();
+      const [row] = await tx.update(profiles).set({
+        accountState: "active",
+        updatedAt,
+      }).where(and(eq(profiles.id, profileId), ambassadorIdentity)).returning();
+      if (!row) throw new DomainError("NOT_FOUND");
+      await audit.emit(tx, {
+        type: "account.reactivated",
+        actor: { id: actor.actorId, nameSnapshot: actor.actorNameSnapshot },
+        entity: {
+          id: profileId,
+          snapshot: lifecycleSnapshot(target, "active", updatedAt),
+        },
+      });
+      return row;
+    });
+
+    return mapProfile(updated);
+  } catch (error) {
+    if (error instanceof DomainError) {
+      if (revocationSucceeded && error.code !== "INTERNAL_ERROR") {
+        logError("ambassador.lifecycle_persistence_failed", error, {
+          profileId,
+          action,
+          revocationAttempted,
+          revocationSucceeded,
+        });
+        throw new DomainError("INTERNAL_ERROR");
+      }
+      throw error;
+    }
+    logError("ambassador.lifecycle_persistence_failed", error, {
+      profileId,
+      action,
+      revocationAttempted,
+      revocationSucceeded,
+    });
+    throw new DomainError("INTERNAL_ERROR");
   }
 }
 

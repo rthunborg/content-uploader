@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { createAuthGuards } from "@/lib/auth";
@@ -15,6 +16,51 @@ function env() {
 }
 
 describe("local all-device revocation evidence", () => {
+  it("default user-id revocation deletes real local Auth sessions and invalidates network auth", async () => {
+    const local = env();
+    process.env.DATABASE_URL = local.DB_URL;
+    const service = createClient(local.API_URL, local.SERVICE_ROLE_KEY);
+    const sql = postgres(local.DB_URL, { prepare: false });
+    const email = `revoke-default-${Date.now()}@example.test`;
+    const created = await service.auth.admin.createUser({ email, email_confirm: true });
+    expect(created.error).toBeNull();
+    const userId = created.data.user!.id;
+    try {
+      const link = await service.auth.admin.generateLink({ type: "magiclink", email });
+      expect(link.error).toBeNull();
+      const client = createClient(local.API_URL, local.ANON_KEY);
+      const verified = await client.auth.verifyOtp({
+        token_hash: link.data.properties!.hashed_token,
+        type: "magiclink",
+      });
+      expect(verified.error).toBeNull();
+      await expect(sql`select id from auth.sessions where user_id = ${userId}`).resolves.toHaveLength(1);
+
+      await revokeAllUserSessions(userId);
+
+      await expect(sql`select id from auth.sessions where user_id = ${userId}`).resolves.toHaveLength(0);
+      const guards = createAuthGuards({
+        getAuth: async () => {
+          const session = await client.auth.getSession();
+          const user = await client.auth.getUser();
+          return { user: user.data.user, hadSession: Boolean(session.data.session) };
+        },
+        getProfile: vi.fn(),
+        consent: { hasCurrentConsent: vi.fn() },
+      });
+      await expect(guards.requireUser()).rejects.toMatchObject({
+        code: "SESSION_REVOKED",
+        remedy: { action: "login" },
+      });
+      const userAfterRevocation = await client.auth.getUser();
+      expect(userAfterRevocation.data.user).toBeNull();
+      expect(userAfterRevocation.error).toBeTruthy();
+    } finally {
+      await service.auth.admin.deleteUser(userId);
+      await sql.end();
+    }
+  }, 30_000);
+
   it("denies the other device and reaches canonical revoked-session login behavior", async () => {
     const local = env();
     const service = createClient(local.API_URL, local.SERVICE_ROLE_KEY);

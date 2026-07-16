@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ZodError } from "zod";
 
 import { ambassadorCopy } from "@/features/ambassadors/copy";
-import { getProfileForAdmin, updateAmbassadorContact } from "@/features/ambassadors/dal/admin";
+import { getProfileForAdmin, updateAmbassadorContact, updateAmbassadorLifecycle } from "@/features/ambassadors/dal/admin";
+import { accountLifecycleSchema } from "@/features/ambassadors/schemas/account-lifecycle";
 import { updateAmbassadorSchema } from "@/features/ambassadors/schemas/update-ambassador";
 import { requireAdmin } from "@/lib/auth";
 import { toErrorResponse } from "@/lib/errors";
@@ -13,6 +14,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ pr
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ profileId: string }> }) {
+  let failureEvent = "admin.contact_update_failed";
   try {
     await requireAdmin();
     let body: unknown;
@@ -27,6 +29,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
       }, { status: 422 });
     }
     const { profileId } = await context.params;
+    if (body && typeof body === "object" && !Array.isArray(body) && "action" in body) {
+      failureEvent = "admin.lifecycle_update_failed";
+      return NextResponse.json(await updateAmbassadorLifecycle(
+        profileId,
+        accountLifecycleSchema.parse(body),
+      ));
+    }
     return NextResponse.json(await updateAmbassadorContact(
       profileId,
       updateAmbassadorSchema.parse(body),
@@ -46,7 +55,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
         },
       }, { status: 422 });
     }
-    const response = toErrorResponse(error, "admin.contact_update_failed");
+    const response = toErrorResponse(error, failureEvent);
     return NextResponse.json(response.body, { status: response.status });
   }
 }

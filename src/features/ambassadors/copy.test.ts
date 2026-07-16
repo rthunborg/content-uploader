@@ -9,4 +9,11 @@ describe("ambassador account-state copy", () => {
     expect(ambassadorCopy.contactSaved).toContain("sparats");
     expect(ambassadorCopy.contactConflict).toContain("annat konto");
   });
+  it("centralizes account lifecycle guidance and feedback", () => {
+    expect(ambassadorCopy.lifecycleActiveBody).toContain("avslutar aktiva sessioner");
+    expect(ambassadorCopy.deactivateConfirm).toContain("pausas direkt");
+    expect(ambassadorCopy.lifecycleUnsupportedBody).toContain("kan inte ändras");
+    expect(ambassadorCopy.lifecycleDeactivated).toContain("sessioner");
+    expect(ambassadorCopy.lifecycleReactivated).toContain("återaktiverats");
+  });
 });

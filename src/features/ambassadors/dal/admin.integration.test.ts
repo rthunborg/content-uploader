@@ -3,7 +3,17 @@ import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn().mockResolvedValue({ role: "admin" }) }));
+const auth = vi.hoisted(() => ({
+  revokeUserSessionsById: vi.fn(),
+}));
+vi.mock("@/lib/auth", () => ({
+  requireAdmin: vi.fn().mockResolvedValue({
+    actorId: "00000000-0000-4000-8000-000000000009",
+    actorNameSnapshot: "admin@example.test",
+    role: "admin",
+  }),
+  revokeUserSessionsById: auth.revokeUserSessionsById,
+}));
 const authAdmin = vi.hoisted(() => ({
   getUserById: vi.fn(),
   updateUserById: vi.fn(),
@@ -69,6 +79,8 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
   beforeEach(() => {
     authAdmin.getUserById.mockReset();
     authAdmin.updateUserById.mockReset();
+    auth.revokeUserSessionsById.mockReset();
+    auth.revokeUserSessionsById.mockResolvedValue(undefined);
   });
 
   it("traverses a page boundary with ordered complete non-overlapping ambassador membership", async () => {
@@ -176,5 +188,98 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
     expect(authAdmin.updateUserById).not.toHaveBeenCalled();
     const [persisted] = await sql<{ email: string }[]>`select email from profiles where id = ${targetId}`;
     expect(persisted.email).toBe(oldEmail);
+  });
+
+  it("persists lifecycle transitions, audit evidence, revocation behavior, and inactive guard denial", async () => {
+    const targetId = userIds[3]!;
+    const targetEmail = `${prefix}3@example.test`;
+    const { updateAmbassadorLifecycle } = await import("./admin");
+
+    await expect(updateAmbassadorLifecycle(targetId, { action: "deactivate" }))
+      .resolves.toMatchObject({ id: targetId, accountState: "deactivated" });
+
+    expect(auth.revokeUserSessionsById).toHaveBeenCalledWith(targetId);
+    const [deactivated] = await sql<{ account_state: string; updated_at: Date }[]>`
+      select account_state, updated_at from profiles where id = ${targetId}
+    `;
+    expect(deactivated).toMatchObject({ account_state: "deactivated" });
+    expect(deactivated!.updated_at).toBeInstanceOf(Date);
+    const deactivationAudit = await sql<{ event_type: string; entity_snapshot: { beforeAccountState: string; afterAccountState: string } }[]>`
+      select event_type, entity_snapshot
+      from audit_events
+      where entity_id = ${targetId} and event_type = 'account.deactivated'
+    `;
+    expect(deactivationAudit).toHaveLength(1);
+    expect(deactivationAudit[0]!.entity_snapshot).toMatchObject({
+      beforeAccountState: "active",
+      afterAccountState: "deactivated",
+    });
+
+    const actualAuth = await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth");
+    const guards = actualAuth.createAuthGuards({
+      getAuth: async () => ({
+        user: { id: targetId, email: targetEmail, app_metadata: {} },
+        hadSession: true,
+      }),
+      getProfile: async () => {
+        const [row] = await sql<{ account_state: "deactivated" }[]>`
+          select account_state from profiles where id = ${targetId}
+        `;
+        return {
+          id: targetId,
+          fullName: "Person 3",
+          email: targetEmail,
+          mobile: null,
+          accountState: row!.account_state,
+          invitedAt: null,
+          firstAcceptedAt: null,
+          firstUploadAt: null,
+          lastLoginAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      },
+      consent: { hasCurrentConsent: vi.fn().mockResolvedValue(true) },
+    });
+    await expect(guards.requireUser()).rejects.toMatchObject({ code: "ACCOUNT_INACTIVE" });
+
+    await expect(updateAmbassadorLifecycle(targetId, { action: "deactivate" }))
+      .resolves.toMatchObject({ accountState: "deactivated" });
+    expect(auth.revokeUserSessionsById).toHaveBeenCalledTimes(1);
+    expect(await sql`select id from audit_events where entity_id = ${targetId} and event_type = 'account.deactivated'`)
+      .toHaveLength(1);
+
+    await expect(updateAmbassadorLifecycle(targetId, { action: "reactivate" }))
+      .resolves.toMatchObject({ id: targetId, accountState: "active" });
+    expect(auth.revokeUserSessionsById).toHaveBeenCalledTimes(1);
+    const reactivationAudit = await sql<{ entity_snapshot: { beforeAccountState: string; afterAccountState: string } }[]>`
+      select entity_snapshot
+      from audit_events
+      where entity_id = ${targetId} and event_type = 'account.reactivated'
+    `;
+    expect(reactivationAudit).toHaveLength(1);
+    expect(reactivationAudit[0]!.entity_snapshot).toMatchObject({
+      beforeAccountState: "deactivated",
+      afterAccountState: "active",
+    });
+  });
+
+  it("excludes admin targets and does not persist lifecycle state when revocation fails", async () => {
+    const { updateAmbassadorLifecycle } = await import("./admin");
+
+    await expect(updateAmbassadorLifecycle(userIds[0]!, { action: "deactivate" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(auth.revokeUserSessionsById).not.toHaveBeenCalled();
+
+    auth.revokeUserSessionsById.mockRejectedValue(new Error("provider secret"));
+    const targetId = userIds[4]!;
+    await expect(updateAmbassadorLifecycle(targetId, { action: "deactivate" }))
+      .rejects.toMatchObject({ code: "INTERNAL_ERROR" });
+    const [persisted] = await sql<{ account_state: string }[]>`
+      select account_state from profiles where id = ${targetId}
+    `;
+    expect(persisted.account_state).toBe("active");
+    expect(await sql`select id from audit_events where entity_id = ${targetId} and event_type = 'account.deactivated'`)
+      .toHaveLength(0);
   });
 });

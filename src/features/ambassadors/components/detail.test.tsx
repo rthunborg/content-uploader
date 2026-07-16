@@ -42,6 +42,10 @@ describe("AmbassadorDetail", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Anna Andersson" })).toBeTruthy();
     expect(screen.getByText("anna@example.com")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Hantera kontoåtkomst" })).toBeTruthy();
+    expect(screen.getByText(/avslutar aktiva sessioner/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Avaktivera konto" }).className)
+      .toContain("min-h-11");
     expect(screen.getByRole("heading", { name: "Redigera kontaktuppgifter" })).toBeTruthy();
     expect(screen.getByLabelText("Fullständigt namn")).toHaveProperty("value", "Anna Andersson");
     expect(screen.getByLabelText("E-post")).toHaveProperty("value", "anna@example.com");
