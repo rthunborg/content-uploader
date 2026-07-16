@@ -4,7 +4,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 function localSupabaseEnvironment() {
   try {
-    const output = execFileSync("npx", ["supabase", "status", "--output", "env"], {
+    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
+    const args = process.platform === "win32"
+      ? ["/d", "/s", "/c", "npx supabase --profile supabase/cli-profile.yaml status --output env"]
+      : ["supabase", "--profile", "supabase/cli-profile.yaml", "status", "--output", "env"];
+    const output = execFileSync(command, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });

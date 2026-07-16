@@ -10,7 +10,11 @@ import { audit } from "./audit";
 function localDatabaseUrl(): string | undefined {
   if (process.env.TEST_DATABASE_URL) return process.env.TEST_DATABASE_URL;
   try {
-    const output = execFileSync("npx", ["supabase", "status", "--output", "env"], {
+    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
+    const args = process.platform === "win32"
+      ? ["/d", "/s", "/c", "npx supabase --profile supabase/cli-profile.yaml status --output env"]
+      : ["supabase", "--profile", "supabase/cli-profile.yaml", "status", "--output", "env"];
+    const output = execFileSync(command, args, {
       encoding: "utf8",
     });
     return output.match(/^DB_URL="?([^"\n]+)"?$/m)?.[1];
