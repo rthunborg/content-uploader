@@ -162,4 +162,22 @@ describe("deleteAccount", () => {
       expect.objectContaining({ profileId: PROFILE_ID, authDeleted: true }),
     );
   });
+
+  it("raises reconciliation when the provider reports failure but the user is already gone", async () => {
+    mocks.deleteUser.mockResolvedValue({ error: { status: 500, code: "provider_error" } });
+    mocks.getUserById.mockResolvedValue({
+      data: { user: null },
+      error: { status: 404, code: "user_not_found" },
+    });
+
+    await expect(deleteAccount(PROFILE_ID)).rejects.toMatchObject({ code: "INTERNAL_ERROR" });
+
+    expect(mocks.deleteWhere).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+    expect(mocks.logCritical).toHaveBeenCalledWith(
+      "ambassador.deletion_reconciliation_required",
+      expect.anything(),
+      expect.objectContaining({ profileId: PROFILE_ID, authDeleted: true }),
+    );
+  });
 });

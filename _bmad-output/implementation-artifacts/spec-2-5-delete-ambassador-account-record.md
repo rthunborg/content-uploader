@@ -4,9 +4,9 @@ type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
 status: 'done'
 baseline_revision: 5349897e4731d64c3b34516e7c85b0c63ae52d32
-final_revision: a9760aa
+final_revision: f857f46
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
@@ -77,6 +77,16 @@ warnings:
 
 ## Review Triage Log
 
+### 2026-07-16 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1: (high 0, medium 0, low 1)
+- defer: 0
+- reject: 5
+- addressed_findings:
+  - `[low]` `[patch]` The reconciliation branch where `admin.deleteUser` *resolves with an error* while the identity is already gone (`authUserNoLongerExists` true → `authDeleted = true` → critical reconciliation) had no test; only the *thrown*-error variant and the post-Auth persistence failure were covered, so a silent regression could suppress the operator's only orphaned-Auth alert. Added a focused unit test in `admin.delete.test.ts` proving the resolved-error-but-gone path raises `ambassador.deletion_reconciliation_required` with `authDeleted: true` and commits no profile deletion or audit.
+- notes: Independent follow-up review over the committed diff (baseline `5349897`..`159f1ac`) under all four lenses. Rejected candidates after inspection: (1) the DB transaction is held across the external revocation and Auth-deletion calls — deliberate and sanctioned by `## Design Notes` and already rejected in the prior pass's transaction-safety posture; (2) `snapshotTimestamp` could throw on an invalid date string — unreachable because `invitedAt`/`lastLoginAt` are DB timestamps (valid or null); (3) the audit snapshot omits `firstAcceptedAt`/`firstUploadAt` though they are selected — the intent requires only an identity/account-state snapshot, and adding them would introduce unrelated content the intent forbids; (4) dropping the cascading FK means an out-of-band Auth-user deletion now orphans a profile instead of cascading — the intent explicitly replaced the deletion-blocking FK with an insert/identity trigger, so this is by design (Epic 7 owns full erasure); (5) `authUserNoLongerExists` swallows `getUserById` exceptions and returns `false` — safe-by-design, defaulting to the retryable "Auth still exists" outcome.
+
 **Automated review disposition:** 6 patch, 0 defer, 12 reject, 0 intent gap, 0 bad spec.
 
 **Addressed findings:**
@@ -124,3 +134,27 @@ Auth deletion is an external side effect that the database cannot roll back. Fol
 - The relationship migration must be deployed before enabling this endpoint because the old cascading foreign key conflicts with retaining the profile until the audited database transaction.
 - Normal local migration application is blocked by a pre-existing Supabase migration-history mismatch at `20260715110614`; the relevant schema change was applied directly to the local test database for verification. No migration history was reset or repaired.
 - Direct acceptance-record retention cannot yet be integration-tested because that persistence schema is not implemented; the deletion path does not call an erasure or acceptance-deletion surface.
+
+## Auto Run Result — Follow-up Review (2026-07-16)
+
+**Summary:** Independent follow-up review of the committed implementation against this spec and its baseline. The prior verified deletion behavior stands; one low-severity verification gap was patched by adding a unit test, and five candidates were rejected after inspection.
+
+**Files changed this pass:**
+- `src/features/ambassadors/dal/admin.delete.test.ts` -- added a unit test proving the resolved-provider-error-but-identity-already-gone path raises the critical reconciliation signal (`authDeleted: true`) without committing profile deletion or audit.
+- `_bmad-output/implementation-artifacts/spec-2-5-delete-ambassador-account-record.md` -- follow-up triage entry, this result, and updated review metadata.
+
+**Review findings breakdown:** 1 patch (low) applied; 0 deferred; 5 rejected; 0 intent_gap; 0 bad_spec.
+
+**Follow-up review recommendation:** false. This pass patched 1 low finding and 0 high/medium; score = `3 × 0 + 1 × 1 = 1` (below the threshold of 5).
+
+**Verification:**
+- `npm run typecheck` -- passed.
+- `npm run lint` -- passed.
+- `npm test` -- passed: 64 files passed, 1 skipped; 394 tests passed (was 393; +1 new test), 5 skipped.
+- `npm run build` -- passed.
+- `git diff --check` -- passed (only pre-existing CRLF advisories from the Windows-mounted checkout).
+- `npx playwright test ambassador-account-deletion.spec.ts` -- not re-run: only a mocked unit test changed this pass, so the deletion journey, retained-scope, accessibility, and former-account-denial coverage are unaffected; the prior passing run remains valid.
+
+**Residual risks:** Unchanged from the original result above.
+
+**Residual artifacts (not part of this change, left in place):** `next-env.d.ts` was regenerated by `npm run build` (Next.js switched the generated route-types import from `./.next/dev/types/routes.d.ts` to `./.next/types/routes.d.ts`). It is unrelated to this review and was deliberately not committed.
