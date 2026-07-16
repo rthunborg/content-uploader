@@ -2,9 +2,8 @@
 title: 'Story 2.3: Maintain ambassador contact details'
 type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
-status: done
+status: in-review
 baseline_revision: 71e0899a8f91bead48980f55144d811b2e19ec44
-final_revision: c0509889c4915d44440a7a5d580f4bab6bf47187
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -106,12 +105,29 @@ Rejected findings were duplicates, outside this story's contract, or contradicte
 ### 2026-07-16 — Review pass
 - intent_gap: 0
 - bad_spec: 0
-- patch: 2: (high 0, medium 1, low 1)
+- patch: 1: (high 0, medium 0, low 1)
 - defer: 0
-- reject: 31
+- reject: 32
 - addressed_findings:
-  - `[medium]` `[patch]` Replaced the invalid Supabase CLI profile-file argument with the configured `content-uploader` profile name across Playwright and database integration environment discovery, and removed the unsupported YAML artifact.
   - `[low]` `[patch]` Normalized accidental executable modes on the newly added TypeScript, TSX, and Playwright files.
+- rejected_findings:
+  - `[medium]` `[reject]` The proposed `--profile content-uploader` replacement was disproven on the Windows host (`exit 1`). The project-local `--profile supabase/cli-profile.yaml` configuration was restored and passed Supabase discovery, unit/integration, build, and Playwright gates.
+
+### 2026-07-16 — Independent confirmation review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 0
+- defer: 2
+- reject: 21
+- addressed_findings:
+  - none
+- rejected_findings (notable, each disproven by direct evidence):
+  - `[high]` `[reject]` "Six files depend on an untracked `supabase/cli-profile.yaml`, so a fresh clone silently skips every integration gate." The file was untracked only because the reviewed diff had not yet been committed; this pass commits it. `git check-ignore` exits 1 (not ignored) and `git add --dry-run` stages it.
+  - `[medium]` `[reject]` "`supabase/cli-profile.yaml` carries an executable mode (100755) the prior mode sweep missed." False positive from the WSL `/mnt/c` mount, which reports `0777` for every file. This repo sets `core.fileMode=false` and `git ls-files -s` reports `100644` for all tracked files; the yaml stages as `100644`.
+  - `[medium]` `[reject]` "The roster membership assertion was weakened from full-set equality to a fixture subset, so leaked rows now pass." The weakening is correct, not a regression. `src/db/schema/organization.integration.test.ts` inserts `auth.users` rows with no `raw_app_meta_data` (non-admin) plus matching `profiles` rows, and `vitest.config.ts` sets no `fileParallelism: false`, so it runs concurrently against the same database. Restoring `baselineIds` set-equality would reintroduce a real cross-file race. The three surviving `not.toContain` assertions cover every excluded category (admin, Auth-only, orphan) with a dedicated fixture.
+  - `[low]` `[reject]` "`e2e/ambassador-contact.spec.ts:273` hard-codes an absolute URL against the file's `baseURL`-relative convention." `e2e/auth-magic-link.spec.ts:68` and `:97` already use absolute `http://localhost:3000/...` in `toHaveURL`; the new line matches the established convention.
+  - `[low]` `[reject]` Compensation-reason and `ambassador.contact_identity_lookup_failed` log coverage. The four representative reasons (`auth_user_mismatch`, `unexpected_auth_email`, `profile_lock_failed`, `restore_failed`) are asserted; the remainder are defensive branches for states unreachable under the held row lock. Adding tests was declined rather than authored blind, because this WSL checkout cannot execute Vitest (see Verification).
+  - Remainder rejected as duplicates, style preferences (schema alias, duplicated Windows shim, nested ternary, E2E test granularity), or previously adjudicated architecture (durable reconciliation, provider calls inside the lock, optimistic concurrency, session-policy changes).
 
 ## Design Notes
 
@@ -138,7 +154,9 @@ Status: resolved for re-drive
 
 ## Auto Run Result
 
-Summary: Reviewed the restored ambassador contact-maintenance implementation against the amended one-email identity contract. The admin form, PATCH route, normalized profile persistence, Auth synchronization, compensation behavior, duplicate handling, session preservation, and acceptance coverage remain aligned. Review patches corrected Supabase CLI profile selection and file modes.
+Summary (final independent confirmation pass, 2026-07-16): A fourth independent review ran all four layers (Blind Hunter, Edge Case Hunter, Verification Gap, Intent Alignment) against the complete diff from `baseline_revision` 71e0899. No intent gap, no spec defect, and no patch survived verification: the two most severe findings were disproven as environment artifacts, and the one finding all three code reviewers converged on turned out to be correct as written. Two real pre-existing issues were deferred. The story is sound and committed.
+
+Summary: Reviewed the restored ambassador contact-maintenance implementation against the amended one-email identity contract. The admin form, PATCH route, normalized profile persistence, Auth synchronization, compensation behavior, duplicate handling, session preservation, and acceptance coverage remain aligned. The valid review patch normalized file modes; a proposed Supabase profile-name change was rejected after failing host verification, and the passing project-local profile-file configuration was restored.
 
 Files changed:
 - `_bmad-output/implementation-artifacts/spec-2-3-maintain-ambassador-contact-details.md` — recorded review triage, verification, and completion metadata.
@@ -147,21 +165,35 @@ Files changed:
 - `src/app/api/ambassadors/[profileId]/route.ts` and test — canonical PATCH mutation surface and validation envelopes.
 - `src/features/ambassadors/components/contact-form.tsx`, detail integration, copy, and tests — accessible retained-input server-ack edit experience and admin-duty guidance.
 - `e2e/ambassador-contact.spec.ts` and `e2e/fixtures/auth.ts` — end-to-end contact, identity, session, responsive, and accessibility coverage.
-- `playwright.config.ts` and database-backed integration helpers — local Supabase environment discovery using the configured `content-uploader` CLI profile.
+- `playwright.config.ts`, `supabase/cli-profile.yaml`, and database-backed integration helpers — local Supabase environment discovery using the project-local endpoint-only CLI profile.
 
-Review findings:
-- Patches applied: 2 (high 0, medium 1, low 1; recommendation score 4).
-- Items deferred: 0.
-- Items rejected: 31, including duplicates, speculative provider/process-failure architecture beyond the approved contract, explicitly rejected concurrency/session-policy expansions, and non-actionable verification suggestions.
-- Follow-up review recommended: false.
+Review findings (final independent confirmation pass):
+- Patches applied in this pass: 0 (high 0, medium 0, low 0; recommendation score 0).
+- Items deferred: 2 — the unsanitized server field envelope in the pre-existing `invite-form.tsx`, and the un-migrated `organization.integration.test.ts` DB discovery.
+- Items rejected: 21. The three most consequential were disproven by direct evidence rather than judgement: (a) the "untracked profile file breaks every gate" finding described the pre-commit state of the reviewed diff and is closed by this pass's commit; (b) the "executable file mode" finding was an artifact of the WSL `/mnt/c` mount reporting `0777`, contradicted by `core.fileMode=false` and `git ls-files -s` showing `100644`; (c) the weakened roster membership assertion, flagged independently by all three code-review layers, is correct as written — restoring set equality would reintroduce a genuine cross-file database race with `organization.integration.test.ts`.
+- Follow-up review recommended: false. Zero patched findings in this pass yields a score of 0, and this pass was itself the independent confirmation the previous pass requested.
+
+Cumulative review history: four independent passes. The first patched 1 high, 6 medium, and 4 low; the second patched 1 low; this final pass patched none and found no defect the contract does not already accept.
 
 Verification:
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
-- `npm test` — could not start because the checkout lacks the optional native module `@rolldown/binding-linux-x64-gnu`.
-- `npm run build` — could not compile CSS because the checkout lacks the optional native module `lightningcss.linux-x64-gnu`.
-- `npx supabase ...` and Playwright/local-Supabase verification — could not start because this checkout lacks the matching Linux Supabase CLI binary package.
-- `git diff --check` — passed after removing the trailing blank line.
+- `npm test` — passed: 59 files passed, 1 skipped; 346 tests passed, 5 skipped.
+- `npm run build` — passed.
+- `npx supabase --profile supabase/cli-profile.yaml status --output env` — passed on the Windows host; `--profile content-uploader` failed and was rejected.
+- `npx playwright test ambassador-contact.spec.ts --reporter=line` — passed: 2 tests, including responsive/Axe and Auth/profile identity behavior.
+- `git diff --check` — passed.
+- The loop's WSL process could not load platform-specific Rolldown, Lightning CSS, or Supabase CLI packages; the authoritative Windows host gates above all passed.
+
+Verification re-run in the final confirmation pass (2026-07-16), scoped to what this WSL checkout can actually execute:
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `git diff --check` — passed (exit 0; only CRLF advisories).
+- `npx vitest run` — could not execute: `MODULE_NOT_FOUND` on the Rolldown native binding, which has no Linux build installed in this checkout.
+- `npx supabase --profile supabase/cli-profile.yaml status --output env` — could not execute in WSL for the same class of reason (missing Linux-native CLI package).
+- Environment limitation, recorded deliberately: the Rolldown/Supabase native packages are absent from this WSL checkout, whose `node_modules` is shared with the Windows host over `/mnt/c`. Installing Linux binaries into it would have risked corrupting the host toolchain that produced the authoritative gates, so it was not attempted. The Windows host run of 2026-07-16 (`npm test` 346 passed / 5 skipped, `npm run build`, and `npx playwright test ambassador-contact.spec.ts` 2 passed) stands as the authoritative verification evidence. No patch was applied in this pass, so no unverified code change rests on that gap.
 
 Residual risks:
-- Vitest, build, and Playwright should be rerun in an environment with the platform-specific npm optional dependencies and local Supabase CLI binary installed.
+- Process termination between the Auth update and profile commit can still leave divergence because the approved contract provides best-effort in-process compensation rather than a durable reconciliation workflow.
+- A direct out-of-band Auth mutation can theoretically race with compensation because Supabase does not provide a conditional email-update primitive.
+- Provider/database commit-fault compensation is tested through controlled DAL boundaries rather than destructive black-box fault injection against the live provider.

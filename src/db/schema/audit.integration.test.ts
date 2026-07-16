@@ -10,8 +10,8 @@ function localDatabaseUrl(): string | undefined {
   try {
     const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
     const args = process.platform === "win32"
-      ? ["/d", "/s", "/c", "npx supabase --profile content-uploader status --output env"]
-      : ["supabase", "--profile", "content-uploader", "status", "--output", "env"];
+      ? ["/d", "/s", "/c", "npx supabase --profile supabase/cli-profile.yaml status --output env"]
+      : ["supabase", "--profile", "supabase/cli-profile.yaml", "status", "--output", "env"];
     const output = execFileSync(command, args, { encoding: "utf8" });
     return output.match(/^DB_URL="?([^"\n]+)"?$/m)?.[1];
   } catch {
