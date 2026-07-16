@@ -3,7 +3,7 @@ title: 'Story 2.3: Maintain ambassador contact details'
 type: 'feature'
 created: '2026-07-16T00:00:00+02:00'
 status: in-review
-baseline_revision: '35ec6c623cb39798272cd6e247335e86e70aa200'
+baseline_revision: eea33ba31debb6b63f6bd9bc00926647843c6c94
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
@@ -124,35 +124,3 @@ Status: resolved for re-drive
 - Auth is updated before the matching profile transaction commits; a later database failure triggers best-effort restoration of the prior Auth email, with a separate reconciliation-critical log if compensation fails.
 - The application does not revoke sessions for contact maintenance. Deactivation, deletion, and withdrawal remain the explicit global-revocation paths.
 - No contact-update audit event is added because the architecture's audit registry is closed.
-
-## Auto Run Result
-
-Status: implemented and independently reviewed
-
-Summary:
-
-- Added the admin-only ambassador contact mutation, schema validation, canonical error mapping, Supabase Auth synchronization, race-safe best-effort compensation, and profile persistence.
-- Added the accessible contact form to the ambassador detail surface with centralized Swedish copy, retained input, first-error focus, responsive target sizing, and server-acknowledged refresh behavior.
-- Added unit, integration, and Playwright coverage for authorization, normalization, conflicts, account-state preservation, Auth/profile synchronization, compensation, passwordless identity behavior, responsive interaction, and Axe accessibility.
-- Added a project-local Supabase CLI profile containing endpoint configuration only, avoiding mutation of the broken global CLI profile.
-
-Review outcome:
-
-- Findings patched: 11 (`high`: 1, `medium`: 6, `low`: 4).
-- Intent gaps: 0. Bad-spec findings: 0. Deferred findings: 0.
-- Follow-up review recommended: `true`; weighted score `22` (`3 × 6 medium + 4 low`).
-
-Verification:
-
-- `npm run typecheck`: passed.
-- `npm run lint`: passed.
-- `npm test`: passed — 59 files passed, 1 skipped; 346 tests passed, 5 skipped.
-- `npm run build`: passed.
-- `npx playwright test ambassador-contact.spec.ts --reporter=line`: passed — 2 tests.
-- `git diff --check`: passed; only line-ending warnings were reported.
-
-Residual risks:
-
-- Process termination between the Auth update and profile commit can still leave divergence because the approved contract provides best-effort in-process compensation rather than a durable reconciliation workflow.
-- A direct out-of-band Auth mutation can theoretically race with compensation because Supabase does not provide a conditional email-update primitive.
-- Provider/database commit-fault compensation is tested through controlled DAL boundaries rather than destructive black-box fault injection against the live provider.

@@ -1,57 +1,28 @@
-import { execFileSync } from "node:child_process";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth", () => ({ requireAdmin: vi.fn().mockResolvedValue({ role: "admin" }) }));
-const authAdmin = vi.hoisted(() => ({
-  getUserById: vi.fn(),
-  updateUserById: vi.fn(),
-}));
-vi.mock("@/lib/supabase/admin", () => ({
-  createAdminSupabaseClient: () => ({ auth: { admin: authAdmin } }),
-}));
 
-function localDatabaseUrl(): string | undefined {
-  if (process.env.TEST_DATABASE_URL) return process.env.TEST_DATABASE_URL;
-  try {
-    const command = process.platform === "win32" ? process.env.ComSpec ?? "cmd.exe" : "npx";
-    const args = process.platform === "win32"
-      ? ["/d", "/s", "/c", "npx supabase --profile supabase/cli-profile.yaml status --output env"]
-      : ["supabase", "--profile", "supabase/cli-profile.yaml", "status", "--output", "env"];
-    const output = execFileSync(command, args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return output.match(/^DB_URL="?([^"\n]+)"?$/m)?.[1];
-  } catch {
-    return undefined;
-  }
-}
-
-const databaseUrl = localDatabaseUrl();
-const describeDatabase = databaseUrl ? describe.sequential : describe.skip;
+const databaseUrl = process.env.TEST_DATABASE_URL;
+const describeDatabase = databaseUrl ? describe : describe.skip;
 
 describeDatabase("ambassador pagination against migrated Postgres", () => {
   const sql = postgres(databaseUrl ?? "postgres://unused", { prepare: false });
   const prefix = `roster-pagination-${Date.now()}-`;
   const userIds: string[] = [];
-  let authOnlyId = "";
-  let authOnlyEmail = "";
   let orphanId = "";
+  let baselineIds: string[] = [];
 
   beforeAll(async () => {
     process.env.DATABASE_URL = databaseUrl;
+    baselineIds = (await sql<{ id: string }[]>`select p.id from profiles p where exists (select 1 from auth.users u where u.id = p.id and (u.raw_app_meta_data -> 'admin') is distinct from 'true'::jsonb) order by p.id`).map(({ id }) => id);
     for (let index = 0; index < 28; index += 1) {
       const metadata = index === 0 ? { admin: true } : index === 1 ? { admin: "legacy" } : {};
-      const accountState = index === 2 ? "invited" : "active";
       const [user] = await sql<{ id: string }[]>`insert into auth.users (id, raw_app_meta_data) values (gen_random_uuid(), ${sql.json(metadata)}) returning id`;
       userIds.push(user.id);
-      await sql`insert into profiles (id, full_name, email, account_state) values (${user.id}, ${`Person ${index}`}, ${`${prefix}${index}@example.test`}, ${accountState})`;
+      await sql`insert into profiles (id, full_name, email, account_state) values (${user.id}, ${`Person ${index}`}, ${`${prefix}${index}@example.test`}, 'active')`;
     }
-    const [authOnly] = await sql<{ id: string }[]>`insert into auth.users (id, email, raw_app_meta_data) values (gen_random_uuid(), ${`${prefix}auth-only@example.test`}, '{}'::jsonb) returning id`;
-    authOnlyId = authOnly.id;
-    authOnlyEmail = `${prefix}auth-only@example.test`;
     const [orphan] = await sql<{ id: string }[]>`select gen_random_uuid() as id`;
     orphanId = orphan.id;
     await sql`set session_replication_role = replica`;
@@ -62,13 +33,7 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
   afterAll(async () => {
     await sql`delete from profiles where email like ${`${prefix}%`}`;
     await sql`delete from auth.users where id = any(${userIds}::uuid[])`;
-    await sql`delete from auth.users where id = ${authOnlyId}`;
     await sql.end();
-  });
-
-  beforeEach(() => {
-    authAdmin.getUserById.mockReset();
-    authAdmin.updateUserById.mockReset();
   });
 
   it("traverses a page boundary with ordered complete non-overlapping ambassador membership", async () => {
@@ -76,17 +41,15 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
     const pages = []; let cursor: string | null = null;
     do { const page = await listAmbassadors(cursor); pages.push(page); cursor = page.nextCursor; } while (cursor);
     const ids = pages.flatMap(({ items }) => items.map(({ id }) => id));
-    const expectedFixtures = userIds.slice(1).sort();
-    const fixtureIds = ids.filter((id) => userIds.includes(id));
+    const expected = [...baselineIds, ...userIds.slice(1)].sort();
     const first = pages[0]!;
     expect(first.items).toHaveLength(25);
     expect(first.nextCursor).toBe(first.items.at(-1)?.id);
     expect(pages.at(-1)?.nextCursor).toBeNull();
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual([...ids].sort());
-    expect(fixtureIds).toEqual(expectedFixtures);
+    expect(ids).toEqual(expected);
     expect(ids).not.toContain(userIds[0]);
-    expect(ids).not.toContain(authOnlyId);
     expect(ids).not.toContain(orphanId);
   });
 
@@ -94,87 +57,5 @@ describeDatabase("ambassador pagination against migrated Postgres", () => {
     const { getProfileForAdmin } = await import("./admin");
     for (const id of ["bad", "00000000-0000-4000-8000-000000000000", userIds[0]!, orphanId]) await expect(getProfileForAdmin(id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(getProfileForAdmin(userIds[1]!)).resolves.toMatchObject({ id: userIds[1] });
-  });
-
-  it("persists normalized contact details consumed by detail and roster reads", async () => {
-    const targetId = userIds[2]!;
-    const oldEmail = `${prefix}2@example.test`;
-    const newEmail = `${prefix}updated@example.test`;
-    authAdmin.getUserById.mockResolvedValue({
-      data: { user: { id: targetId, email: oldEmail } },
-      error: null,
-    });
-    authAdmin.updateUserById.mockResolvedValue({
-      data: { user: { id: targetId, email: newEmail } },
-      error: null,
-    });
-    const { getProfileForAdmin, listAmbassadors, updateAmbassadorContact } = await import("./admin");
-
-    await expect(updateAmbassadorContact(targetId, {
-      fullName: "  Anna Andersson  ",
-      email: ` ${newEmail.toUpperCase()} `,
-      mobile: " +46 70 123 45 67 ",
-    })).resolves.toMatchObject({
-      id: targetId,
-      fullName: "Anna Andersson",
-      email: newEmail,
-      mobile: "+46 70 123 45 67",
-      accountState: "invited",
-    });
-
-    expect(authAdmin.updateUserById).toHaveBeenCalledWith(targetId, { email: newEmail });
-    await expect(getProfileForAdmin(targetId)).resolves.toMatchObject({
-      fullName: "Anna Andersson",
-      email: newEmail,
-      mobile: "+46 70 123 45 67",
-    });
-    const persisted = await sql<{ full_name: string; email: string; mobile: string; account_state: string; updated_at: Date }[]>`
-      select full_name, email, mobile, account_state, updated_at from profiles where id = ${targetId}
-    `;
-    expect(persisted[0]).toMatchObject({
-      full_name: "Anna Andersson",
-      email: newEmail,
-      mobile: "+46 70 123 45 67",
-      account_state: "invited",
-    });
-    expect(persisted[0]!.updated_at).toBeInstanceOf(Date);
-
-    const rosterItems = [];
-    let cursor: string | null = null;
-    do {
-      const page = await listAmbassadors(cursor);
-      rosterItems.push(...page.items);
-      cursor = page.nextCursor;
-    } while (cursor);
-    expect(rosterItems.find(({ id }) => id === targetId)).toMatchObject({
-      fullName: "Anna Andersson",
-      email: newEmail,
-      mobile: "+46 70 123 45 67",
-    });
-  });
-
-  it("rejects duplicates found in either profiles or Auth before provider mutation", async () => {
-    const targetId = userIds[4]!;
-    const oldEmail = `${prefix}4@example.test`;
-    authAdmin.getUserById.mockResolvedValue({
-      data: { user: { id: targetId, email: oldEmail } },
-      error: null,
-    });
-    const { updateAmbassadorContact } = await import("./admin");
-
-    await expect(updateAmbassadorContact(targetId, {
-      fullName: "Person 4",
-      email: `${prefix}5@example.test`,
-      mobile: null,
-    })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(updateAmbassadorContact(targetId, {
-      fullName: "Person 4",
-      email: authOnlyEmail,
-      mobile: null,
-    })).rejects.toMatchObject({ code: "CONFLICT" });
-
-    expect(authAdmin.updateUserById).not.toHaveBeenCalled();
-    const [persisted] = await sql<{ email: string }[]>`select email from profiles where id = ${targetId}`;
-    expect(persisted.email).toBe(oldEmail);
   });
 });
