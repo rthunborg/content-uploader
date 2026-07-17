@@ -112,6 +112,7 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const [record] = await sql<{ id: string }[]>`select id from acceptance_records order by chain_position limit 1`;
     await expect(sql`update acceptance_records set hmac=repeat('f',64) where id=${record.id}`).rejects.toMatchObject({ code: "55000" });
     await expect(sql`delete from acceptance_records where id=${record.id}`).rejects.toMatchObject({ code: "55000" });
+    await expect(sql`truncate acceptance_records`).rejects.toMatchObject({ code: "55000" });
     const [shape] = await sql<{ has_updated_at: boolean; live_fk_count: string }[]>`select exists(select 1 from information_schema.columns where table_schema='public' and table_name='acceptance_records' and column_name='updated_at') has_updated_at, (select count(*) from pg_constraint where conrelid='public.acceptance_records'::regclass and contype='f' and confrelid <> 'public.terms_versions'::regclass)::text live_fk_count`;
     expect(shape).toEqual({ has_updated_at: false, live_fk_count: "0" });
   });

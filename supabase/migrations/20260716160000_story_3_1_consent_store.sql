@@ -30,9 +30,12 @@ create table public.acceptance_chain_head (
 insert into public.acceptance_chain_head(singleton, chain_position, head_hmac, signature) values (1, 0, repeat('0',64), repeat('0',64));
 
 create function public.reject_acceptance_mutation() returns trigger language plpgsql as $$ begin raise exception 'acceptance_records are append-only' using errcode = '55000'; end $$;
-create trigger acceptance_records_immutable before update or delete on public.acceptance_records for each statement execute function public.reject_acceptance_mutation();
+-- Cover truncate too: revoke does not bind the table owner, and the app connects
+-- through DATABASE_URL, so the owner-effective trigger is what actually keeps the
+-- ledger append-only. Without `or truncate` an owner could silently wipe it.
+create trigger acceptance_records_immutable before update or delete or truncate on public.acceptance_records for each statement execute function public.reject_acceptance_mutation();
 create function public.reject_terms_mutation() returns trigger language plpgsql as $$ begin raise exception 'terms_versions are immutable' using errcode = '55000'; end $$;
-create trigger terms_versions_immutable before update or delete on public.terms_versions for each statement execute function public.reject_terms_mutation();
+create trigger terms_versions_immutable before update or delete or truncate on public.terms_versions for each statement execute function public.reject_terms_mutation();
 
 alter table public.terms_versions enable row level security;
 alter table public.consent_pii_keys enable row level security;

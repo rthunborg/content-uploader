@@ -45,7 +45,10 @@ export async function appendAcceptance(userId: string, identity: Identity) {
   if (!identity.email.trim() || !identity.fullName.trim()) throw new DomainError("VALIDATION_FAILED", "Identitetsuppgifterna är ofullständiga.");
   const terms = await readCurrentTerms();
   if (!terms) throw new DomainError("CONFLICT", "Inga publicerade villkor finns att godkänna.");
-  return getDatabase().transaction(async (tx) => { const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, identity }); await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: identity.email }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, occurredAt: result.occurredAt.toISOString() } } }); return result; });
+  return getDatabase().transaction(async (tx) => { const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, identity }); // The audit event is immutable and never crypto-shredded, so it must not carry
+// erasable PII. Snapshot the pseudonymous userId (already the cleartext chain
+// identifier) instead of the email, so erasure is not defeated by an audit copy.
+await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, occurredAt: result.occurredAt.toISOString() } } }); return result; });
 }
 
 export async function cryptoShredAcceptancePii(userId: string) {

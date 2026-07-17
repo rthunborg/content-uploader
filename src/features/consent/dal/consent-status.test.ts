@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const execute = vi.fn();
-vi.mock("@/db/client", () => ({ getDatabase: () => ({ execute }) }));
+vi.mock("@/db/client", () => ({ getDatabase: () => ({ transaction: async (callback: (tx: { execute: typeof execute }) => unknown) => callback({ execute }) }) }));
 import { productionConsentStatusProvider } from "./consent-status";
 import { signHead, signRecord, ZERO_HMAC } from "../crypto";
 

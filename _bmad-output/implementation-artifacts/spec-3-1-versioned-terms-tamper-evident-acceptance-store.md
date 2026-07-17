@@ -113,6 +113,20 @@ warnings:
   - `[medium]` `[patch]` Added read-dispatch-delete, empty-queue, and no-delete-on-error consumer coverage.
   - `[medium]` `[patch]` Added pre-consent authorization, identity, incomplete-profile, and current-terms boundary coverage.
 
+### 2026-07-17 — Independent Claude review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4: (high 2, medium 1, low 1)
+- defer: 5
+- reject: 11: (high 1, medium 5, low 5)
+- addressed_findings:
+  - `[high]` `[patch]` Removed cleartext email PII from the `consent.accepted` audit event (snapshotting the pseudonymous userId), so the immutable, never-shredded audit log no longer defeats the crypto-shred erasure guarantee.
+  - `[high]` `[patch]` Extended the `acceptance_records` and `terms_versions` immutability triggers to `before update or delete or truncate`, closing an owner-effective TRUNCATE bypass of the append-only ledger (revoke does not bind the table owner), with a new integration assertion that TRUNCATE raises `55000`.
+  - `[medium]` `[patch]` Made the consent-currency provider read the current terms, ledger, and signed head in one `repeatable read`/`read only` snapshot, so a concurrent append can no longer advance the head between reads and fail-close an otherwise-consented user.
+  - `[low]` `[patch]` Logged fail-closed consent-status store/integrity errors through the sanitized logging seam so a misconfiguration or outage is no longer indistinguishable from "no consent."
+- deferred_findings (see `deferred-work.md`): no `CONSENT_PII_KEK`/wrapped-key rotation path; hand-duplicated HMAC canonicalization between app crypto and worker verifier (split-brain risk); hot-path O(N) whole-ledger verification plus 60s pgmq visibility timeout vs unbounded verification time; worker verifier's non-atomic records/head reads (needs real-Postgres coverage); pre-existing `account.invited` cleartext PII in `audit_events` unreachable by crypto-shred (Epic 7 audit-erasure).
+- rejected (not this story's problem or consistent with frozen intent): global fail-closed lockout from one bad row is the deliberate single-chain design tradeoff; no erasure audit event / audit changes are out of scope ("never add audit-expiry paths"); terms `payload_sha256` is never re-derived from jsonb so the binding use is sound; timestamp round-trips at stored ms precision; Drizzle-vs-migration index naming is cosmetic (migration is source of truth); terms-publish TOCTOU is rare and self-correcting; the exported-but-unwired acceptance/erasure surface is intended (Story 3.1 is infrastructure-only); poison-message and synchronous-throw polling paths are unreachable given the controlled producer and always-async consumer; and which DB role the app connects as is a deployment concern outside this diff.
+
 ## Auto Run Result
 
 Status: done
@@ -161,6 +175,28 @@ Verification:
 - `git diff --check` — passed with line-ending warnings only.
 
 Residual risks: Production terms remain intentionally unpublished until Legal supplies the complete approved Swedish manifest. Serial file scheduling makes the full Vitest suite reliable against one mutable local Supabase stack but increases runtime to roughly ten minutes. Residual artifacts after the reviewed commit are this final status/result write-back in the spec and `package-lock.json` filesystem metadata/line-ending state; the lockfile has no content diff from the index and is not part of this change.
+
+### 2026-07-17 — Independent Claude review finalization
+
+The pending independent Claude review ran adversarial and edge-case hunters over the full baseline→HEAD diff, then resolved four verified findings within the frozen intent (2 high, 1 medium, 1 low); five findings were deferred to `deferred-work.md` and eleven were rejected as consistent with the frozen design or out of scope. No `intent_gap` or `bad_spec` was found, so no spec amendment or code re-derivation was required.
+
+Files changed in this pass:
+- `src/features/consent/dal/acceptance.ts` — the `consent.accepted` audit event now snapshots the pseudonymous userId instead of the plaintext email, so the immutable audit log does not preserve erasable PII the crypto-shred cannot reach.
+- `supabase/migrations/20260716160000_story_3_1_consent_store.sql` — the `acceptance_records` and `terms_versions` immutability triggers now also reject `truncate`.
+- `src/features/consent/dal/consent-status.ts` — the currency check reads terms/ledger/head in a single `repeatable read`/`read only` snapshot and logs fail-closed errors through the sanitized seam.
+- `src/features/consent/dal/consent-status.test.ts` — the unit mock now exposes the transactional read seam.
+- `src/features/consent/dal/consent-store.integration.test.ts` — added a real-Postgres assertion that `TRUNCATE acceptance_records` raises `55000`.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — recorded the five deferred findings.
+
+Verification (this pass):
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test` — 433 passed, 12 skipped; the only failure was the consent integration suite's `beforeAll` (`supabase db reset`) exceeding its 60s hook timeout under container-restart load — the pre-documented environment timing marginality, not a logic failure.
+- `src/features/consent/dal/consent-status.test.ts` — passed 7/7.
+- `src/features/consent/dal/consent-store.integration.test.ts` (real Postgres, incl. the new TRUNCATE rejection and the snapshot-based provider reads) — passed 7/7 in isolation, reconfirmed after stabilizing the stack.
+- `npx supabase db reset` — migration with the extended truncate triggers applies cleanly.
+
+Residual risks (this pass): The consent integration suite's DB reset inside `beforeAll` is close to its 60s budget and flakes when the local stack is churning from prior resets; it passes reliably in isolation. The deferred items above (KEK rotation, worker/app canonicalization split-brain, hot-path O(N) verification and pgmq visibility-timeout sizing, non-atomic worker verifier reads, and pre-existing `account.invited` audit PII) remain open for focused follow-up work.
 
 ## Design Notes
 
