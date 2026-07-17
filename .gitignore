@@ -1,6 +1,7 @@
 # Local agent / editor tooling (machine-specific, reproducible — not project source)
 .claude/
 .agents/
+.codex/hooks.json
 
 # Dependencies
 node_modules/
