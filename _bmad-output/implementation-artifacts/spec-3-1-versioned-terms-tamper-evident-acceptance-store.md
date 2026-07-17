@@ -2,9 +2,9 @@
 title: 'Story 3.1: Versioned terms & tamper-evident acceptance store'
 type: 'feature'
 created: '2026-07-16'
-status: in-review
+status: done
 baseline_revision: 58f771fec8cd9cbbdd7c50bbb903cbab4c729754
-final_revision: d90f29825cb886a09d7312368b06cfa1365c1054
+final_revision: f2d77fc2bf7e68d2336062e047574846e31d3920
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
