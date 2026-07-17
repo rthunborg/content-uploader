@@ -16,7 +16,7 @@ Turn an invited ambassador into an active contributor through understandable, ve
 ## Requirements & Constraints
 
 - First-login ambassadors must acknowledge all three plain-language consent cards before activation. Each completed acceptance records the user identity snapshot, terms version, and timestamp; 100% of acceptances must remain traceable to the accepted version.
-- The approved Swedish card and legal text is canonical and must be rendered verbatim. Any wording or underlying legal-text change creates a new terms version and requires ambassadors to re-accept before continuing.
+- The approved Swedish card text is the production source of truth and must be rendered verbatim; each card's full legal text remains accessible from the flow. Any card wording or underlying legal-text change creates a new terms version and requires ambassadors to re-accept before continuing.
 - Declining does not delete the account, content, or evidence. It moves the ambassador into a paused state, suppresses task and message sends, and allows self-service return and later acceptance without admin intervention.
 - Ambassadors whose accepted version is stale must be blocked from protected actions until they accept the current version. Declining changed terms uses the same paused state as first-login decline. Admin sessions are outside the ambassador consent gate.
 - Acceptance evidence is append-only, tamper-evident, retained independently of the six-month audit-event lifecycle, and retained while the related account or content exists. It must not be cascaded away with an account row.
@@ -27,7 +27,7 @@ Turn an invited ambassador into an active contributor through understandable, ve
 
 - Store terms in a versioned `terms_versions` model. New versions are published through the consent data-access layer by the publishing script and emit the closed-registry `terms.version_created` audit event.
 - Keep `acceptance_records` in its own indefinite-retention lifecycle. Enforce INSERT-only behavior with grants and a trigger; provide no update/delete path, `updated_at`, or foreign key to profiles or auth users. Store denormalized identity snapshots.
-- Each acceptance includes `hmac` and `prev_hmac` values in a per-record chain. The `ACCEPTANCE_HMAC_KEY` lives only in application and worker environments. A scheduled `verify-acceptance-chain` job reports integrity failures through the runtime-neutral logging seam.
+- Each acceptance includes `hmac` and `prev_hmac` values in a chained record sequence. The `ACCEPTANCE_HMAC_KEY` lives only in application and worker environments. A scheduled `verify-acceptance-chain` job reports integrity failures through the runtime-neutral logging seam.
 - Encrypt personal identity snapshots with a per-user key held in `consent_pii_keys`. GDPR erasure deletes that key and appends a signed tombstone so erased PII is unreadable while chain integrity and pseudonymous evidence remain.
 - Use the account states `invited`, `active`, `inactive_declined`, `inactive_withdrawn`, and `deactivated`; deletion is row removal, not an account state. Accepting all current terms activates the profile and sets `first_accepted_at` when applicable.
 - The server-only data-access layer is the authoritative consent boundary. `requireUser()` performs network-validated user, account-state, and current-terms checks on every protected ambassador request. `requireUserPreConsent()` is restricted to consent and own-state operations; `requireAdmin()` does not apply the consent-version gate.

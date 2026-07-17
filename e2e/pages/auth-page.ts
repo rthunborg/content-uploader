@@ -45,4 +45,8 @@ export class AuthPage {
     const results = await new AxeBuilder({ page: this.page }).analyze();
     expect(results.violations).toEqual([]);
   }
+
+  async advanceConsentCard() { await this.page.getByRole("button", { name: "Godkänn och fortsätt" }).click(); }
+  async openConsentLegalText() { await this.page.getByRole("button", { name: "Läs hela villkorstexten" }).click(); }
+  async finishConsent() { await this.page.getByRole("button", { name: "Godkänn och aktivera konto" }).click(); }
 }

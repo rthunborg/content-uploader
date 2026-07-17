@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 import { test as base, expect } from "@playwright/test";
@@ -10,7 +11,11 @@ type LocalAuth = {
   admin: ReturnType<typeof createClient>;
   latestLink(email: string): Promise<string>;
   clearMail(): Promise<void>;
+  publishSyntheticTerms(): Promise<{ id: string; payload: SyntheticTerms }>;
+  createInvitedAmbassador(email: string, fullName?: string): Promise<{ id: string; confirmationPath: string }>;
 };
+
+export type SyntheticTerms = { schemaVersion: 1; version: string; locale: "sv-SE"; cards: [{ id: "content_usage"; title: string; body: string; legalTextMarkdown: string }, { id: "bystander_consent"; title: string; body: string; legalTextMarkdown: string }, { id: "user_control"; title: string; body: string; legalTextMarkdown: string }] };
 
 function statusEnvironment() {
   let output: string;
@@ -101,6 +106,32 @@ export const test = base.extend<LocalAuth>({
   admin: async ({}, use) => use(createClient(apiUrl, env.SERVICE_ROLE_KEY, { auth: { persistSession: false } })),
   latestLink: async ({}, use) => use(latestLink),
   clearMail: async ({}, use) => use(clearMail),
+  publishSyntheticTerms: async ({ admin }, use) => use(async () => {
+    const payload: SyntheticTerms = { schemaVersion: 1, version: "99.32.0", locale: "sv-SE", cards: [
+      { id: "content_usage", title: "Syntetiskt samtycke: innehåll", body: "Detta är omisskännligt syntetisk testtext för innehåll.", legalTextMarkdown: "Fullständig syntetisk juridisk text för innehåll." },
+      { id: "bystander_consent", title: "Syntetiskt samtycke: personer", body: "Detta är omisskännligt syntetisk testtext för personer.", legalTextMarkdown: "Fullständig syntetisk juridisk text för personer." },
+      { id: "user_control", title: "Syntetiskt samtycke: kontroll", body: "Detta är omisskännligt syntetisk testtext för kontroll.", legalTextMarkdown: "Fullständig syntetisk juridisk text för kontroll." },
+    ] };
+    const existing = await admin.from("terms_versions").select("id,payload").eq("version", payload.version).eq("locale", payload.locale).maybeSingle();
+    expect(existing.error).toBeNull();
+    if (existing.data) return { id: existing.data.id, payload: existing.data.payload as SyntheticTerms };
+    const payloadSha256 = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+    const inserted = await admin.from("terms_versions").insert({ version: payload.version, locale: payload.locale, schema_version: 1, payload, payload_sha256: payloadSha256 }).select("id").single();
+    expect(inserted.error).toBeNull(); return { id: inserted.data!.id, payload };
+  }),
+  createInvitedAmbassador: async ({ admin }, use) => use(async (email, fullName = "Syntetisk Ambassadör") => {
+    const created = await admin.auth.admin.createUser({ email, email_confirm: true }); expect(created.error).toBeNull();
+    const id = created.data.user!.id;
+    try {
+      const profile = await admin.from("profiles").insert({ id, full_name: fullName, email, account_state: "invited", invited_at: new Date().toISOString() }); expect(profile.error).toBeNull();
+      const link = await admin.auth.admin.generateLink({ type: "magiclink", email }); expect(link.error).toBeNull();
+      const token = link.data.properties!.hashed_token;
+      return { id, confirmationPath: `/auth/confirm?token_hash=${encodeURIComponent(token)}&type=magiclink&next=/tasks` };
+    } catch (error) {
+      await admin.auth.admin.deleteUser(id);
+      throw error;
+    }
+  }),
 });
 
 export { expect };

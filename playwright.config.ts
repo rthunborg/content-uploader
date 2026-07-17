@@ -50,6 +50,8 @@ export default defineConfig({
       // Auth confirmation now enters the server-only DAL to load profile state.
       // Forward the local database URL just as the deployed app receives DATABASE_URL.
       DATABASE_URL: local.DB_URL ?? process.env.DATABASE_URL ?? "",
+      ACCEPTANCE_HMAC_KEY: process.env.ACCEPTANCE_HMAC_KEY ?? "ERERERERERERERERERERERERERERERERERERERERERE=",
+      CONSENT_PII_KEK: process.env.CONSENT_PII_KEK ?? "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI=",
     },
   },
 });

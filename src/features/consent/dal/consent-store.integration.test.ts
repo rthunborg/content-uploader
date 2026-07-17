@@ -85,6 +85,47 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
   });
 
+  it("atomically activates first login, binds current evidence and audit, and deduplicates replay/concurrency", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'first-login@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'First Login Synthetic', 'first-login@example.test', 'invited')`;
+    const { acceptCurrentTermsAndActivate } = await import("./acceptance");
+    const [first, replayA, replayB] = await Promise.all([
+      acceptCurrentTermsAndActivate(userId),
+      acceptCurrentTermsAndActivate(userId),
+      acceptCurrentTermsAndActivate(userId),
+    ]);
+    expect(new Set([first.id, replayA.id, replayB.id]).size).toBe(1);
+    const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
+    const evidence = await sql<{ id: string; terms_version_id: string; terms_payload_sha256: string; occurred_at: Date; prev_hmac: string; hmac: string }[]>`select id, terms_version_id, terms_payload_sha256, occurred_at, prev_hmac, hmac from acceptance_records where user_id_snapshot=${userId} and record_type='acceptance'`;
+    const [current] = await sql<{ id: string; payload_sha256: string }[]>`select id, payload_sha256 from terms_versions where locale='sv-SE' order by published_at desc, id desc limit 1`;
+    expect(profile.account_state).toBe("active"); expect(profile.first_accepted_at.toISOString()).toBe(evidence[0]!.occurred_at.toISOString());
+    expect(evidence).toHaveLength(1); expect(evidence[0]).toMatchObject({ terms_version_id: current.id, terms_payload_sha256: current.payload_sha256 });
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and entity_id=${evidence[0]!.id}`).toHaveLength(1);
+    const [head] = await sql<{ chain_position: string; head_hmac: string }[]>`select chain_position::text, head_hmac from acceptance_chain_head where singleton=1`;
+    const [tail] = await sql<{ chain_position: string; hmac: string }[]>`select chain_position::text, hmac from acceptance_records order by chain_position desc limit 1`;
+    expect(head.chain_position).toBe(tail.chain_position); expect(head.head_hmac).toBe(tail.hmac);
+    const preserved = profile.first_accepted_at;
+    await acceptCurrentTermsAndActivate(userId);
+    expect((await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${userId}`)[0]!.first_accepted_at.toISOString()).toBe(preserved.toISOString());
+  });
+
+  it("rolls back evidence, audit and activation when the profile mutation fails", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rollback-login@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Rollback Synthetic', 'rollback-login@example.test', 'invited')`;
+    await sql`create function pg_temp.reject_story_3_2_activation() returns trigger language plpgsql as $$ begin if new.account_state='active' then raise exception 'synthetic activation failure'; end if; return new; end $$`;
+    await sql`create trigger story_3_2_reject_activation before update on profiles for each row execute function pg_temp.reject_story_3_2_activation()`;
+    const before = (await sql<{ chain_position: string; head_hmac: string }[]>`select chain_position::text, head_hmac from acceptance_chain_head where singleton=1`)[0]!;
+    const { acceptCurrentTermsAndActivate } = await import("./acceptance");
+    await expect(acceptCurrentTermsAndActivate(userId)).rejects.toThrow();
+    await sql`drop trigger story_3_2_reject_activation on profiles`;
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(0);
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and actor_id=${userId}`).toHaveLength(0);
+    expect((await sql<{ account_state: string; first_accepted_at: Date | null }[]>`select account_state, first_accepted_at from profiles where id=${userId}`)[0]).toEqual({ account_state: "invited", first_accepted_at: null });
+    expect((await sql<{ chain_position: string; head_hmac: string }[]>`select chain_position::text, head_hmac from acceptance_chain_head where singleton=1`)[0]).toEqual(before);
+  });
+
   it("serializes actual concurrent acceptance and tombstone appends without a fork", async () => {
     const { appendAcceptance, cryptoShredAcceptancePii } = await import("./acceptance");
     const userA = randomUUID(), userB = randomUUID();

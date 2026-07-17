@@ -1,0 +1,21 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { DomainError } from "@/lib/errors";
+import { safeContinuation } from "@/lib/auth/continuation";
+import { acceptTerms } from "@/features/consent/dal/pre-consent";
+import { CONSENT_COPY } from "@/features/consent/copy";
+import type { ConsentActionState } from "@/features/consent/components/consent-card-stack";
+
+export async function acceptConsent(_previous: ConsentActionState, formData: FormData): Promise<ConsentActionState> {
+  const next = safeContinuation(String(formData.get("next") ?? "/tasks"));
+  try { await acceptTerms(); }
+  catch (error) {
+    // Mirror the page loader and requireUserOrRedirect: auth/account-state failures
+    // must relocate the user, not strand them on the consent form with an inline error.
+    if (error instanceof DomainError && (error.code === "AUTH_REQUIRED" || error.code === "SESSION_REVOKED")) redirect(`/auth/login?next=${encodeURIComponent(next)}`);
+    if (error instanceof DomainError && (error.code === "ACCOUNT_INACTIVE" || error.code === "FORBIDDEN")) redirect("/auth/paused");
+    return { error: error instanceof DomainError ? error.message : CONSENT_COPY.submitError };
+  }
+  redirect(next === "/" ? "/tasks" : next);
+}

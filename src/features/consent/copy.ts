@@ -1,0 +1,18 @@
+export const CONSENT_COPY = {
+  eyebrow: "Stena Content Portal",
+  title: "Innan du börjar",
+  intro: "Läs igenom och godkänn alla tre delar för att aktivera ditt konto.",
+  legalLink: "Läs hela villkorstexten",
+  legalTitle: "Fullständig villkorstext",
+  close: "Stäng",
+  next: "Godkänn och fortsätt",
+  finish: "Godkänn och aktivera konto",
+  pending: "Aktiverar ditt konto …",
+  position: (current: number, total: number) => `Del ${current} av ${total}`,
+  unavailableTitle: "Villkoren kan inte visas just nu",
+  unavailableBody: "Försök igen om en liten stund. Kontakta HR om problemet kvarstår. Inget har sparats.",
+  retry: "Försök igen",
+  submitError: "Kontot kunde inte aktiveras. Försök igen. Inget ofullständigt godkännande har sparats.",
+  tasksTitle: "Dina uppdrag",
+  tasksEmpty: "Det finns inga uppdrag att visa ännu.",
+} as const;

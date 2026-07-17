@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { DomainError } from "@/lib/errors";
 import { audit } from "@/shared/audit";
-import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, unwrapUserDataKey, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
+import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
 import { readCurrentTerms } from "./terms";
 
 const CHAIN_LOCK_ID = 3_100_001;
@@ -49,6 +49,45 @@ export async function appendAcceptance(userId: string, identity: Identity) {
 // erasable PII. Snapshot the pseudonymous userId (already the cleartext chain
 // identifier) instead of the email, so erasure is not defeated by an audit copy.
 await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, occurredAt: result.occurredAt.toISOString() } } }); return result; });
+}
+
+export type FirstLoginAcceptance = { id: string; occurredAt: Date; termsVersionId: string; alreadyAccepted: boolean };
+
+/** Accepts the authoritative current terms and activates an invited profile atomically. */
+export async function acceptCurrentTermsAndActivate(userId: string): Promise<FirstLoginAcceptance> {
+  return getDatabase().transaction(async (tx) => {
+    const [profile] = await tx.execute<{ email: string; full_name: string | null; account_state: string; first_accepted_at: Date | null }>(sql`
+      select email, full_name, account_state, first_accepted_at
+      from public.profiles where id = ${userId}::uuid for update
+    `);
+    if (!profile) throw new DomainError("FORBIDDEN", "Kontot saknar åtkomst.");
+    if (!profile.email.trim() || !profile.full_name?.trim()) throw new DomainError("VALIDATION_FAILED", "Identitetsuppgifterna är ofullständiga.");
+
+    const [terms] = await tx.execute<{ id: string; payload: unknown; payload_sha256: string }>(sql`
+      select id, payload, payload_sha256 from public.terms_versions
+      where locale = 'sv-SE' order by published_at desc, id desc limit 1
+    `);
+    if (!terms) throw new DomainError("CONFLICT", "Inga publicerade villkor finns att godkänna.");
+    const { termsManifestSchema } = await import("./terms");
+    const parsedTerms = termsManifestSchema.safeParse(terms.payload);
+    if (!parsedTerms.success || termsPayloadSha256(parsedTerms.data) !== terms.payload_sha256) throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
+
+    const [existing] = await tx.execute<{ id: string; occurred_at: Date }>(sql`
+      select id, occurred_at from public.acceptance_records
+      where user_id_snapshot = ${userId}::uuid and terms_version_id = ${terms.id}::uuid and record_type = 'acceptance'
+      order by chain_position limit 1
+    `);
+    if (existing) {
+      if (profile.account_state === "invited") await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${existing.occurred_at}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
+      return { id: existing.id, occurredAt: existing.occurred_at, termsVersionId: terms.id, alreadyAccepted: true };
+    }
+    if (profile.account_state !== "invited") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
+
+    const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, identity: { email: profile.email, fullName: profile.full_name } });
+    await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, occurredAt: result.occurredAt.toISOString() } } });
+    await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${result.occurredAt.toISOString()}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
+    return { ...result, termsVersionId: terms.id, alreadyAccepted: false };
+  });
 }
 
 export async function cryptoShredAcceptancePii(userId: string) {
