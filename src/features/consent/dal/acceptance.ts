@@ -6,7 +6,7 @@ import { getDatabase } from "@/db/client";
 import { DomainError } from "@/lib/errors";
 import { audit } from "@/shared/audit";
 import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, validateConsentKeys, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
-import { readCurrentTerms } from "./terms";
+import { CURRENT_TERMS_LOCK_ID, readCurrentTerms } from "./terms";
 
 const CHAIN_LOCK_ID = 3_100_001;
 type Identity = { email: string; fullName: string };
@@ -58,12 +58,13 @@ export type DeclineResult = { alreadyDeclined: boolean };
 export async function declineCurrentTerms(userId: string): Promise<DeclineResult> {
   validateConsentKeys();
   return getDatabase().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_TERMS_LOCK_ID})`);
     const [profile] = await tx.execute<{ account_state: string }>(sql`
       select account_state from public.profiles where id = ${userId}::uuid for update
     `);
     if (!profile) throw new DomainError("FORBIDDEN", "Kontot saknar åtkomst.");
     if (profile.account_state === "inactive_declined") return { alreadyDeclined: true };
-    if (profile.account_state !== "invited") {
+    if (profile.account_state !== "invited" && profile.account_state !== "active") {
       throw new DomainError("CONFLICT", "Kontot kan inte pausas från sitt nuvarande läge.");
     }
     const [terms] = await tx.execute<{ id: string; payload: unknown; payload_sha256: string }>(sql`
@@ -75,6 +76,15 @@ export async function declineCurrentTerms(userId: string): Promise<DeclineResult
     const parsed = termsManifestSchema.safeParse(terms.payload);
     if (!parsed.success || termsPayloadSha256(parsed.data) !== terms.payload_sha256) {
       throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
+    }
+    if (profile.account_state === "active") {
+      const [currentAcceptance] = await tx.execute<{ id: string }>(sql`
+        select id from public.acceptance_records
+        where user_id_snapshot = ${userId}::uuid and terms_version_id = ${terms.id}::uuid
+          and terms_payload_sha256 = ${terms.payload_sha256} and record_type = 'acceptance'
+        limit 1
+      `);
+      if (currentAcceptance) throw new DomainError("CONFLICT", "De aktuella villkoren är redan godkända.");
     }
     await tx.execute(sql`update public.profiles set account_state = 'inactive_declined', updated_at = now() where id = ${userId}::uuid`);
     await audit.emit(tx, {
@@ -89,6 +99,7 @@ export async function declineCurrentTerms(userId: string): Promise<DeclineResult
 /** Accepts the authoritative current terms and activates an invited profile atomically. */
 export async function acceptCurrentTermsAndActivate(userId: string): Promise<FirstLoginAcceptance> {
   return getDatabase().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_TERMS_LOCK_ID})`);
     const [profile] = await tx.execute<{ email: string; full_name: string | null; account_state: string; first_accepted_at: Date | null }>(sql`
       select email, full_name, account_state, first_accepted_at
       from public.profiles where id = ${userId}::uuid for update
@@ -105,16 +116,17 @@ export async function acceptCurrentTermsAndActivate(userId: string): Promise<Fir
     const parsedTerms = termsManifestSchema.safeParse(terms.payload);
     if (!parsedTerms.success || termsPayloadSha256(parsedTerms.data) !== terms.payload_sha256) throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
 
-    const [existing] = await tx.execute<{ id: string; occurred_at: Date }>(sql`
-      select id, occurred_at from public.acceptance_records
+    const [existing] = await tx.execute<{ id: string; occurred_at: Date; terms_payload_sha256: string }>(sql`
+      select id, occurred_at, terms_payload_sha256 from public.acceptance_records
       where user_id_snapshot = ${userId}::uuid and terms_version_id = ${terms.id}::uuid and record_type = 'acceptance'
       order by chain_position limit 1
     `);
     if (existing) {
+      if (existing.terms_payload_sha256 !== terms.payload_sha256) throw new DomainError("CONFLICT", "Tidigare godkännande matchar inte de publicerade villkoren.");
       if (profile.account_state === "invited" || profile.account_state === "inactive_declined") await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${existing.occurred_at}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
       return { id: existing.id, occurredAt: existing.occurred_at, termsVersionId: terms.id, alreadyAccepted: true };
     }
-    if (profile.account_state !== "invited" && profile.account_state !== "inactive_declined") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
+    if (profile.account_state !== "invited" && profile.account_state !== "inactive_declined" && profile.account_state !== "active") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
 
     const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, identity: { email: profile.email, fullName: profile.full_name } });
     await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, occurredAt: result.occurredAt.toISOString() } } });

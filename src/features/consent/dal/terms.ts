@@ -1,6 +1,6 @@
 import "server-only";
 
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { termsVersions, type TermsPayload } from "@/db/schema";
@@ -9,6 +9,7 @@ import { audit } from "@/shared/audit";
 import { termsPayloadSha256, validateConsentKeys } from "../crypto";
 
 const CARD_IDS = ["content_usage", "bystander_consent", "user_control"] as const;
+export const CURRENT_TERMS_LOCK_ID = 3_100_002;
 const cardSchema = z.object({ id: z.enum(CARD_IDS), title: z.string().trim().min(1), body: z.string().trim().min(1), legalTextMarkdown: z.string().trim().min(1) }).strict();
 export const termsManifestSchema = z.object({ schemaVersion: z.literal(1), version: z.string().regex(/^\d+\.\d+\.\d+$/), locale: z.literal("sv-SE"), cards: z.tuple([cardSchema, cardSchema, cardSchema]) }).strict().superRefine((value, ctx) => { value.cards.forEach((card, index) => { if (card.id !== CARD_IDS[index]) ctx.addIssue({ code: "custom", path: ["cards", index, "id"], message: `Expected ${CARD_IDS[index]}` }); }); });
 export type TermsManifest = z.infer<typeof termsManifestSchema>;
@@ -22,6 +23,7 @@ export async function publishTerms(input: unknown): Promise<CurrentTerms> {
   const sha = termsPayloadSha256(payload);
   try {
     return await getDatabase().transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_TERMS_LOCK_ID})`);
       const [row] = await tx.insert(termsVersions).values({ version: payload.version, locale: payload.locale, schemaVersion: 1, payload, payloadSha256: sha }).returning();
       if (!row) throw new Error("Terms insert did not return a row");
       await audit.emit(tx, { type: "terms.version_created", actor: { id: null, nameSnapshot: "system" }, entity: { id: row.id, snapshot: { version: row.version, locale: row.locale, payloadSha256: row.payloadSha256 } } });

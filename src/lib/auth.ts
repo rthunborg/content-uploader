@@ -59,6 +59,7 @@ export function createAuthGuards(deps: Dependencies) {
   return {
     async requireUserPreConsent(): Promise<UserContext> {
       const { user, profile } = await authenticated();
+      if (user.app_metadata?.admin === true) throw new DomainError("FORBIDDEN", "Ambassadörsåtkomst krävs.");
       if (!(["active", "invited", "inactive_declined"] as const).includes(profile.accountState as "active" | "invited" | "inactive_declined")) {
         throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
       }

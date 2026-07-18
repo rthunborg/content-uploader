@@ -29,6 +29,11 @@ describe("auth context matrix", () => {
     await expect(guards({ id: "user-1" }).requireAdmin()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(guards({ id: "user-1", app_metadata: { admin: true } }, { consent: false }).requireAdmin()).resolves.toMatchObject({ role: "admin" });
   });
+  it("keeps admins outside every ambassador pre-consent operation", async () => {
+    const adminGuards = guards({ id: "user-1", app_metadata: { admin: true } }, { consent: false });
+    await expect(adminGuards.requireUserPreConsent()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(adminGuards.requireAdmin()).resolves.toMatchObject({ role: "admin" });
+  });
   it("forbids an admin from acting through the ambassador context", async () => {
     await expect(guards({ id: "user-1", app_metadata: { admin: true } }).requireUser()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });

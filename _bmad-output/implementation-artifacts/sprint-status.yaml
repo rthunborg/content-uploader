@@ -73,7 +73,7 @@ development_status:
   3-1-versioned-terms-tamper-evident-acceptance-store: done
   3-2-first-login-consent-card-flow: done
   3-3-decline-pause-self-service-return: done
-  3-4-re-accept-on-terms-change: backlog
+  3-4-re-accept-on-terms-change: done
   epic-3-retrospective: optional
 
   # ===== Epic 4: Contribution — Upload & Media Processing =====

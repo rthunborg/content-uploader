@@ -10,7 +10,7 @@ import { CONSENT_COPY } from "../copy";
 export type ConsentActionState = { error: string | null };
 const ICONS = [FileCheck2, Users, ShieldCheck] as const;
 
-export function ConsentCardStack({ terms, next, action, declineAction }: { terms: TermsManifest; next: string; action(previous: ConsentActionState, data: FormData): Promise<ConsentActionState>; declineAction?: (previous: ConsentActionState, data: FormData) => Promise<ConsentActionState> }) {
+export function ConsentCardStack({ terms, next, action, declineAction, mode = "first-login", changedCardIds = [] }: { terms: TermsManifest; next: string; action(previous: ConsentActionState, data: FormData): Promise<ConsentActionState>; declineAction?: (previous: ConsentActionState, data: FormData) => Promise<ConsentActionState>; mode?: "first-login" | "reaccept"; changedCardIds?: TermsManifest["cards"][number]["id"][] | null }) {
   const [index, setIndex] = useState(0);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, { error: null });
@@ -18,17 +18,20 @@ export function ConsentCardStack({ terms, next, action, declineAction }: { terms
   const heading = useRef<HTMLHeadingElement>(null);
   const legalTrigger = useRef<HTMLButtonElement>(null);
   const card = terms.cards[index]!;
+  const changed = mode === "reaccept" && changedCardIds?.includes(card.id);
   const Icon = ICONS[index]!;
   useEffect(() => { if (index > 0) heading.current?.focus(); }, [index]);
 
   const busy = pending || declinePending;
   return <div className="grid min-h-[560px] gap-6" aria-busy={busy}>
+    {mode === "reaccept" && <div className="rounded-lg border-2 border-action-primary bg-selected-bg p-4" role="status"><h2 className="font-bold">{CONSENT_COPY.changedTitle}</h2><p>{changedCardIds && changedCardIds.length > 0 ? CONSENT_COPY.changedIntro : CONSENT_COPY.changedGeneric}</p></div>}
     <p className="sr-only" aria-live="polite">{CONSENT_COPY.position(index + 1, terms.cards.length)}</p>
     <div className="flex items-center justify-center gap-2" aria-label={CONSENT_COPY.position(index + 1, terms.cards.length)}>
       {terms.cards.map((item, dot) => <span key={item.id} className={`size-3 rounded-full border border-surface-media ${dot === index ? "bg-action-primary" : "bg-surface"}`} aria-hidden />)}
       <span className="ml-2 text-sm tabular-count">{CONSENT_COPY.position(index + 1, terms.cards.length)}</span>
     </div>
-    <article className="rounded-lg bg-surface-panel p-6 sm:p-8" aria-labelledby={`consent-card-${index}`}>
+    <article className={`rounded-lg bg-surface-panel p-6 sm:p-8 ${changed ? "border-2 border-action-primary" : ""}`} aria-labelledby={`consent-card-${index}`}>
+      {changed && <p className="mb-3 font-bold text-action-primary">{CONSENT_COPY.changedMarker}</p>}
       <Icon className="mb-4 size-10 text-action-primary" aria-hidden />
       <h2 ref={heading} tabIndex={-1} id={`consent-card-${index}`} className="text-2xl font-bold leading-tight">{card.title}</h2>
       <p className="mt-4 text-base leading-7">{card.body}</p>
@@ -39,7 +42,7 @@ export function ConsentCardStack({ terms, next, action, declineAction }: { terms
       {index < terms.cards.length - 1
         ? <Button key={`advance-${index}`} className="w-full" size="lg" type="button" onClick={() => setIndex((value) => value + 1)}>{CONSENT_COPY.next}</Button>
         : <div className="grid gap-3">
-            <form action={formAction}><input type="hidden" name="next" value={next} /><Button key="finish" className="w-full" size="lg" type="submit" disabled={busy}>{pending ? CONSENT_COPY.pending : CONSENT_COPY.finish}</Button></form>
+            <form action={formAction}><input type="hidden" name="next" value={next} /><Button key="finish" className="w-full" size="lg" type="submit" disabled={busy}>{pending ? (mode === "reaccept" ? CONSENT_COPY.reacceptPending : CONSENT_COPY.pending) : (mode === "reaccept" ? CONSENT_COPY.reacceptFinish : CONSENT_COPY.finish)}</Button></form>
             {declineAction && <form action={declineFormAction}><input type="hidden" name="next" value={next} /><Button className="min-h-11 w-full" variant="tertiary" type="submit" disabled={busy}>{declinePending ? CONSENT_COPY.declining : CONSENT_COPY.decline}</Button></form>}
           </div>}
     </div>

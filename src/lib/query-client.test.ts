@@ -28,6 +28,15 @@ describe("global query auth routing", () => {
     );
     expect(navigate).not.toHaveBeenCalled();
   });
+  it("carries a safe deep path and query through the consent continuation contract", async () => {
+    await handleGlobalAuthError({ code: "CONSENT_REQUIRED" }, environment("/tasks/open", "?theme=fleet"));
+    expect(navigate).toHaveBeenCalledWith("/auth/consent?next=%2Ftasks%2Fopen%3Ftheme%3Dfleet");
+    expect(signOut).not.toHaveBeenCalled();
+  });
+  it("drops an unsafe current location before consent routing", async () => {
+    await handleGlobalAuthError({ code: "CONSENT_REQUIRED" }, environment("//evil.example/steal"));
+    expect(navigate).toHaveBeenCalledWith("/auth/consent?next=%2F");
+  });
   it("navigates even when local sign-out rejects", async () => {
     signOut.mockRejectedValueOnce(new Error("local failure"));
     await expect(handleGlobalAuthError({ code: "SESSION_REVOKED" }, environment("/tasks"))).rejects.toThrow("local failure");

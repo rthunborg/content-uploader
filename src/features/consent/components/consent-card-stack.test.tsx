@@ -39,4 +39,28 @@ describe("ConsentCardStack", () => {
     fireEvent.click(screen.getByRole("button", { name: "Godkänn och fortsätt" }));
     expect(screen.getByRole("button", { name: "Pausa mitt konto" }).className).toContain("min-h-11");
   });
+
+  it("announces re-acceptance and marks every changed card with text and styling", () => {
+    render(<ConsentCardStack terms={terms} next="/upload/deep?task=1" action={vi.fn()} mode="reaccept" changedCardIds={["content_usage", "bystander_consent"]} />);
+    expect(screen.getByRole("status").textContent).toContain("Villkoren har ändrats");
+    expect(screen.getByText("Ändrad sedan ditt senaste godkännande")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Godkänn och fortsätt" }));
+    expect(screen.getByText("Ändrad sedan ditt senaste godkännande")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Godkänn och fortsätt" }));
+    expect(screen.queryByText("Ändrad sedan ditt senaste godkännande")).toBeNull();
+    expect(screen.getByRole("button", { name: "Godkänn uppdaterade villkor" })).toBeTruthy();
+  });
+
+  it("uses generic changed-terms guidance when prior evidence cannot support precise markers", () => {
+    render(<ConsentCardStack terms={terms} next="/tasks" action={vi.fn()} mode="reaccept" changedCardIds={null} />);
+    expect(screen.getByRole("status").textContent).toContain("Läs igenom alla delar");
+    expect(screen.queryByText("Ändrad sedan ditt senaste godkännande")).toBeNull();
+  });
+
+  it("uses generic changed-terms guidance when a new version has no identifiable card changes", () => {
+    render(<ConsentCardStack terms={terms} next="/tasks" action={vi.fn()} mode="reaccept" changedCardIds={[]} />);
+    expect(screen.getByRole("status").textContent).toContain("Läs igenom alla delar");
+    expect(screen.getByRole("status").textContent).not.toContain("markerade");
+    expect(screen.queryByText("Ändrad sedan ditt senaste godkännande")).toBeNull();
+  });
 });

@@ -24,7 +24,11 @@ export class AuthPage {
     expect(box!.height).toBeGreaterThanOrEqual(44);
     expect(box!.width).toBeGreaterThanOrEqual(44);
 
-    await target.focus();
+    // Enter through the real keyboard focus path so :focus-visible is exercised;
+    // programmatic HTMLElement.focus() does not consistently match keyboard modality in Chromium.
+    for (let attempt = 0; attempt < 20 && !(await target.evaluate((element) => element === document.activeElement)); attempt += 1) {
+      await this.page.keyboard.press("Tab");
+    }
     await expect(target).toBeFocused();
     const focusStyle = await target.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -49,5 +53,6 @@ export class AuthPage {
   async advanceConsentCard() { await this.page.getByRole("button", { name: "Godkänn och fortsätt" }).click(); }
   async openConsentLegalText() { await this.page.getByRole("button", { name: "Läs hela villkorstexten" }).click(); }
   async finishConsent() { await this.page.getByRole("button", { name: "Godkänn och aktivera konto" }).click(); }
+  async finishReacceptance() { await this.page.getByRole("button", { name: "Godkänn uppdaterade villkor" }).click(); }
   async declineConsent() { await this.page.getByRole("button", { name: "Pausa mitt konto" }).click(); }
 }

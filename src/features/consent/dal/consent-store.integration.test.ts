@@ -110,6 +110,99 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     expect((await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${userId}`)[0]!.first_accepted_at.toISOString()).toBe(preserved.toISOString());
   });
 
+  it("re-accepts v1 to v2 exactly once, preserves first acceptance, and serializes replacement decisions", async () => {
+    const { acceptCurrentTermsAndActivate, declineCurrentTerms } = await import("./acceptance");
+    const { publishTerms } = await import("./terms");
+    const { readVerifiedReacceptanceContext } = await import("./consent-status");
+    const acceptingUser = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${acceptingUser}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'reaccept@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${acceptingUser}, 'Reaccept Synthetic', 'reaccept@example.test', 'invited')`;
+    const first = await acceptCurrentTermsAndActivate(acceptingUser);
+    const firstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${acceptingUser}`)[0]!.first_accepted_at;
+    const v2Manifest = syntheticManifest(`99.4.${Date.now()}`);
+    v2Manifest.cards[0].title = "Changed title";
+    v2Manifest.cards[1].legalTextMarkdown = "Changed legal text only";
+    const v2 = await publishTerms(v2Manifest);
+    const context = await readVerifiedReacceptanceContext(acceptingUser);
+    expect(context).toMatchObject({ mode: "reaccept", changedCardIds: ["content_usage", "bystander_consent"] });
+    const results = await Promise.all([
+      acceptCurrentTermsAndActivate(acceptingUser),
+      acceptCurrentTermsAndActivate(acceptingUser),
+      acceptCurrentTermsAndActivate(acceptingUser),
+    ]);
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(results[0]!.id).not.toBe(first.id);
+    const [activeProfile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${acceptingUser}`;
+    expect(activeProfile.account_state).toBe("active");
+    expect(activeProfile.first_accepted_at.toISOString()).toBe(firstAcceptedAt.toISOString());
+    const v2Evidence = await sql<{ id: string }[]>`select id from acceptance_records where user_id_snapshot=${acceptingUser} and terms_version_id=${v2.id} and record_type='acceptance'`;
+    expect(v2Evidence).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and entity_id=${v2Evidence[0]!.id}`).toHaveLength(1);
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${acceptingUser} and record_type='acceptance'`).toHaveLength(2);
+    await expect(readVerifiedReacceptanceContext(acceptingUser)).resolves.toMatchObject({ mode: "current", changedCardIds: [] });
+
+    const decliningUser = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${decliningUser}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'redecline@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${decliningUser}, 'Redecline Synthetic', 'redecline@example.test', 'invited')`;
+    await acceptCurrentTermsAndActivate(decliningUser);
+    const decliningFirstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${decliningUser}`)[0]!.first_accepted_at;
+    const v3Manifest = syntheticManifest(`99.5.${Date.now()}`); v3Manifest.cards[2].body = "Replacement body";
+    await publishTerms(v3Manifest);
+    const [declineA, declineB] = await Promise.all([declineCurrentTerms(decliningUser), declineCurrentTerms(decliningUser)]);
+    expect([declineA.alreadyDeclined, declineB.alreadyDeclined].sort()).toEqual([false, true]);
+    const [declinedProfile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${decliningUser}`;
+    expect(declinedProfile.account_state).toBe("inactive_declined");
+    expect(declinedProfile.first_accepted_at.toISOString()).toBe(decliningFirstAcceptedAt.toISOString());
+    expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${decliningUser}`).toHaveLength(1);
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${decliningUser} and record_type='acceptance'`).toHaveLength(1);
+  });
+
+  it("serializes a terms publication racing an active stale acceptance", async () => {
+    const { acceptCurrentTermsAndActivate } = await import("./acceptance");
+    const { publishTerms } = await import("./terms");
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'publication-race@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Publication Race', 'publication-race@example.test', 'invited')`;
+    await acceptCurrentTermsAndActivate(userId);
+    const submittedVersion = await publishTerms(syntheticManifest(`99.6.${Date.now()}`));
+    const racingManifest = syntheticManifest(`99.7.${Date.now()}`); racingManifest.cards[0].body = "Published during submission";
+    const [acceptResult, published] = await Promise.all([acceptCurrentTermsAndActivate(userId), publishTerms(racingManifest)]);
+    const accepted = (await sql<{ terms_version_id: string }[]>`select terms_version_id from acceptance_records where id=${acceptResult.id}`)[0]!;
+    const [current] = await sql<{ id: string }[]>`select id from terms_versions where locale='sv-SE' order by published_at desc, id desc limit 1`;
+    expect(current.id).toBe(published.id);
+    expect([submittedVersion.id, published.id]).toContain(accepted.terms_version_id);
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and terms_version_id=${accepted.terms_version_id}`).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and entity_id=${acceptResult.id}`).toHaveLength(1);
+    const { productionConsentStatusProvider } = await import("./consent-status");
+    if (accepted.terms_version_id === submittedVersion.id) {
+      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(false);
+      const resumed = await acceptCurrentTermsAndActivate(userId);
+      expect(resumed.termsVersionId).toBe(published.id);
+      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
+    } else {
+      expect(accepted.terms_version_id).toBe(published.id);
+      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
+    }
+  });
+
+  it("fails closed when same-version replay evidence has a different payload hash", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'hash-replay@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Hash Replay', 'hash-replay@example.test', 'invited')`;
+    const { acceptCurrentTermsAndActivate } = await import("./acceptance");
+    const accepted = await acceptCurrentTermsAndActivate(userId);
+    const [original] = await sql<{ terms_payload_sha256: string }[]>`select terms_payload_sha256 from acceptance_records where id=${accepted.id}`;
+    await sql`alter table acceptance_records disable trigger acceptance_records_immutable`;
+    try {
+      await sql`update acceptance_records set terms_payload_sha256=${"f".repeat(64)} where id=${accepted.id}`;
+      await expect(acceptCurrentTermsAndActivate(userId)).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(1);
+    } finally {
+      await sql`update acceptance_records set terms_payload_sha256=${original.terms_payload_sha256} where id=${accepted.id}`;
+      await sql`alter table acceptance_records enable trigger acceptance_records_immutable`;
+    }
+  });
+
   it("rolls back evidence, audit and activation when the profile mutation fails", async () => {
     const userId = randomUUID();
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rollback-login@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;

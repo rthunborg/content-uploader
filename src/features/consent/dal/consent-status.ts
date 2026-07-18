@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { logError } from "@/shared/logger";
 import { verifyAcceptanceLedger, type LedgerRecord } from "../crypto";
+import { termsManifestSchema, type CurrentTerms, type TermsManifest } from "./terms";
+import { termsPayloadSha256 } from "../crypto";
 
 export interface ConsentStatusProvider {
   hasCurrentConsent(userId: string): Promise<boolean>;
@@ -11,6 +13,52 @@ export interface ConsentStatusProvider {
 
 type CurrentTermsSnapshot = { current_id: string; current_sha: string };
 type HeadSnapshot = { chain_position: string; head_hmac: string; signature: string };
+
+export type ReacceptanceContext = {
+  mode: "first-login" | "reaccept" | "current";
+  currentTerms: Omit<CurrentTerms, "payload"> & { payload: TermsManifest };
+  changedCardIds: TermsManifest["cards"][number]["id"][] | null;
+};
+
+/** Returns change claims only when both manifests and the complete acceptance chain verify. */
+export async function readVerifiedReacceptanceContext(userId: string): Promise<ReacceptanceContext | null> {
+  try {
+    return await getDatabase().transaction(async (tx) => {
+      const termsRows = await tx.execute<{ id: string; payload: unknown; payload_sha256: string; published_at: Date | string }>(sql`
+        select id, payload, payload_sha256, published_at from public.terms_versions
+        where locale = 'sv-SE' order by published_at desc, id desc
+      `);
+      const currentRow = termsRows[0];
+      if (!currentRow) return null;
+      const currentParsed = termsManifestSchema.safeParse(currentRow.payload);
+      if (!currentParsed.success || termsPayloadSha256(currentParsed.data) !== currentRow.payload_sha256) return null;
+      const records = await tx.execute<{ id: string; record_type: "acceptance" | "erasure_tombstone"; user_id_snapshot: string; terms_version_id: string | null; terms_payload_sha256: string | null; occurred_at: Date | string; chain_position: string; prev_hmac: string; hmac: string }>(sql`select id, record_type, user_id_snapshot, terms_version_id, terms_payload_sha256, occurred_at, chain_position, prev_hmac, hmac from public.acceptance_records order by chain_position`);
+      const [head] = await tx.execute<HeadSnapshot>(sql`select chain_position, head_hmac, signature from public.acceptance_chain_head where singleton=1`);
+      if (!head) return null;
+      const ledger: LedgerRecord[] = records.map((record) => ({ chainPosition: record.chain_position, recordId: record.id, recordType: record.record_type, userIdSnapshot: record.user_id_snapshot, termsVersionId: record.terms_version_id, termsPayloadSha256: record.terms_payload_sha256, occurredAt: record.occurred_at, prevHmac: record.prev_hmac, hmac: record.hmac }));
+      if (!verifyAcceptanceLedger(ledger, { chainPosition: head.chain_position, headHmac: head.head_hmac, signature: head.signature })) return null;
+      // Fail closed for crypto-shredded users, mirroring hasCurrentConsent: a tombstoned
+      // user must never be presented as current/re-accept (which would loop against the gate).
+      if (ledger.some((record) => record.userIdSnapshot === userId && record.recordType === "erasure_tombstone")) return null;
+      const latest = [...ledger].reverse().find((record) => record.userIdSnapshot === userId && record.recordType === "acceptance");
+      const currentTerms = { id: currentRow.id, payload: currentParsed.data, payloadSha256: currentRow.payload_sha256, publishedAt: new Date(currentRow.published_at).toISOString() };
+      if (!latest) return { mode: "first-login", currentTerms, changedCardIds: [] };
+      if (latest.termsVersionId === currentRow.id && latest.termsPayloadSha256 === currentRow.payload_sha256) return { mode: "current", currentTerms, changedCardIds: [] };
+      const priorRow = termsRows.find((row) => row.id === latest.termsVersionId && row.payload_sha256 === latest.termsPayloadSha256);
+      if (!priorRow) return { mode: "reaccept", currentTerms, changedCardIds: null };
+      const priorParsed = termsManifestSchema.safeParse(priorRow.payload);
+      if (!priorParsed.success || termsPayloadSha256(priorParsed.data) !== priorRow.payload_sha256) return { mode: "reaccept", currentTerms, changedCardIds: null };
+      const changedCardIds = currentParsed.data.cards.filter((card, index) => {
+        const prior = priorParsed.data.cards[index];
+        return !prior || card.id !== prior.id || card.title !== prior.title || card.body !== prior.body || card.legalTextMarkdown !== prior.legalTextMarkdown;
+      }).map((card) => card.id);
+      return { mode: "reaccept", currentTerms, changedCardIds };
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+  } catch (error) {
+    logError("consent.reacceptance_context_failed", error);
+    return null;
+  }
+}
 
 export const productionConsentStatusProvider: ConsentStatusProvider = {
   async hasCurrentConsent(userId) {
