@@ -16,4 +16,18 @@ export async function verifyAcceptanceChain(reader: AcceptanceEvidenceReader, ke
   if (records.length === 0 && head.signature === "0".repeat(64)) return;
   const expectedHead = sign(["acceptance-chain-head-v1", String(records.length), previous.toLowerCase()], keyValue); if (!equal(head.signature, expectedHead)) throw new Error("Acceptance chain head signature is invalid");
 }
-export async function runAcceptanceChainVerification(reader: AcceptanceEvidenceReader, keyValue?: string) { try { await verifyAcceptanceChain(reader, keyValue); return true; } catch (error) { logCritical("acceptance_chain.integrity_failed", error, { job: "verify-acceptance-chain" }); return false; } }
+export async function runAcceptanceChainVerification(reader: AcceptanceEvidenceReader, keyValue?: string) {
+  // Configuration and snapshot-read failures are operational failures: propagate
+  // them so pgmq leaves the job available for retry. Only a completed snapshot
+  // whose evidence fails verification is terminal and acknowledged after one
+  // sanitized critical event.
+  key(keyValue);
+  const snapshot = reader.snapshot ? await reader.snapshot() : { records: await reader.records(), head: await reader.head() };
+  try {
+    await verifyAcceptanceChain({ records: async () => snapshot.records, head: async () => snapshot.head }, keyValue);
+    return true;
+  } catch (error) {
+    logCritical("acceptance_chain.integrity_failed", error, { job: "verify-acceptance-chain" });
+    return false;
+  }
+}

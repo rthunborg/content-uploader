@@ -1,5 +1,5 @@
 # generated: 2026-07-12
-# last_updated: 2026-07-15
+# last_updated: 2026-07-18
 # project: stena-content-portal
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-12
-last_updated: 2026-07-15
+last_updated: 2026-07-18
 project: stena-content-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -69,7 +69,7 @@ development_status:
   epic-2-retrospective: optional
 
   # ===== Epic 3: Ambassador Onboarding & Consent =====
-  epic-3: in-progress
+  epic-3: done
   3-1-versioned-terms-tamper-evident-acceptance-store: done
   3-2-first-login-consent-card-flow: done
   3-3-decline-pause-self-service-return: done

@@ -27,6 +27,11 @@ describeDatabase("Story 3.1 consent store matrix", () => {
   const hmacKey = randomBytes(32).toString("base64");
   const kek = randomBytes(32).toString("base64");
   let publishedId = "";
+  const readCurrentTermsPrecondition = async () => {
+    const [terms] = await sql<{ id: string; payload_sha256: string }[]>`select id, payload_sha256 from terms_versions where locale='sv-SE' order by published_at desc, id desc limit 1`;
+    if (!terms) throw new Error("Current terms are missing from the integration fixture");
+    return { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256 };
+  };
   beforeAll(() => {
     execFileSync("npx", ["supabase", "--profile", "supabase/cli-profile.yaml", "db", "reset"], { stdio: "ignore" });
     process.env.DATABASE_URL = databaseUrl; process.env.ACCEPTANCE_HMAC_KEY = hmacKey; process.env.CONSENT_PII_KEK = kek;
@@ -90,10 +95,11 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'first-login@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'First Login Synthetic', 'first-login@example.test', 'invited')`;
     const { acceptCurrentTermsAndActivate } = await import("./acceptance");
+    const expectedTerms = await readCurrentTermsPrecondition();
     const [first, replayA, replayB] = await Promise.all([
-      acceptCurrentTermsAndActivate(userId),
-      acceptCurrentTermsAndActivate(userId),
-      acceptCurrentTermsAndActivate(userId),
+      acceptCurrentTermsAndActivate(userId, expectedTerms),
+      acceptCurrentTermsAndActivate(userId, expectedTerms),
+      acceptCurrentTermsAndActivate(userId, expectedTerms),
     ]);
     expect(new Set([first.id, replayA.id, replayB.id]).size).toBe(1);
     const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
@@ -106,7 +112,7 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const [tail] = await sql<{ chain_position: string; hmac: string }[]>`select chain_position::text, hmac from acceptance_records order by chain_position desc limit 1`;
     expect(head.chain_position).toBe(tail.chain_position); expect(head.head_hmac).toBe(tail.hmac);
     const preserved = profile.first_accepted_at;
-    await acceptCurrentTermsAndActivate(userId);
+    await acceptCurrentTermsAndActivate(userId, expectedTerms);
     expect((await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${userId}`)[0]!.first_accepted_at.toISOString()).toBe(preserved.toISOString());
   });
 
@@ -117,7 +123,8 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const acceptingUser = randomUUID();
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${acceptingUser}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'reaccept@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${acceptingUser}, 'Reaccept Synthetic', 'reaccept@example.test', 'invited')`;
-    const first = await acceptCurrentTermsAndActivate(acceptingUser);
+    const firstTerms = await readCurrentTermsPrecondition();
+    const first = await acceptCurrentTermsAndActivate(acceptingUser, firstTerms);
     const firstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${acceptingUser}`)[0]!.first_accepted_at;
     const v2Manifest = syntheticManifest(`99.4.${Date.now()}`);
     v2Manifest.cards[0].title = "Changed title";
@@ -125,10 +132,11 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const v2 = await publishTerms(v2Manifest);
     const context = await readVerifiedReacceptanceContext(acceptingUser);
     expect(context).toMatchObject({ mode: "reaccept", changedCardIds: ["content_usage", "bystander_consent"] });
+    const v2Terms = await readCurrentTermsPrecondition();
     const results = await Promise.all([
-      acceptCurrentTermsAndActivate(acceptingUser),
-      acceptCurrentTermsAndActivate(acceptingUser),
-      acceptCurrentTermsAndActivate(acceptingUser),
+      acceptCurrentTermsAndActivate(acceptingUser, v2Terms),
+      acceptCurrentTermsAndActivate(acceptingUser, v2Terms),
+      acceptCurrentTermsAndActivate(acceptingUser, v2Terms),
     ]);
     expect(new Set(results.map((result) => result.id)).size).toBe(1);
     expect(results[0]!.id).not.toBe(first.id);
@@ -144,7 +152,7 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const decliningUser = randomUUID();
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${decliningUser}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'redecline@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${decliningUser}, 'Redecline Synthetic', 'redecline@example.test', 'invited')`;
-    await acceptCurrentTermsAndActivate(decliningUser);
+    await acceptCurrentTermsAndActivate(decliningUser, v2Terms);
     const decliningFirstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${decliningUser}`)[0]!.first_accepted_at;
     const v3Manifest = syntheticManifest(`99.5.${Date.now()}`); v3Manifest.cards[2].body = "Replacement body";
     await publishTerms(v3Manifest);
@@ -163,40 +171,53 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     const userId = randomUUID();
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'publication-race@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Publication Race', 'publication-race@example.test', 'invited')`;
-    await acceptCurrentTermsAndActivate(userId);
+    await acceptCurrentTermsAndActivate(userId, await readCurrentTermsPrecondition());
     const submittedVersion = await publishTerms(syntheticManifest(`99.6.${Date.now()}`));
+    const displayedTerms = await readCurrentTermsPrecondition();
+    expect(displayedTerms).toEqual({ termsVersionId: submittedVersion.id, termsPayloadSha256: submittedVersion.payloadSha256 });
     const racingManifest = syntheticManifest(`99.7.${Date.now()}`); racingManifest.cards[0].body = "Published during submission";
-    const [acceptResult, published] = await Promise.all([acceptCurrentTermsAndActivate(userId), publishTerms(racingManifest)]);
-    const accepted = (await sql<{ terms_version_id: string }[]>`select terms_version_id from acceptance_records where id=${acceptResult.id}`)[0]!;
+    const [acceptOutcome, publishOutcome] = await Promise.allSettled([
+      acceptCurrentTermsAndActivate(userId, displayedTerms),
+      publishTerms(racingManifest),
+    ]);
+    if (publishOutcome.status !== "fulfilled") throw publishOutcome.reason;
+    const published = publishOutcome.value;
     const [current] = await sql<{ id: string }[]>`select id from terms_versions where locale='sv-SE' order by published_at desc, id desc limit 1`;
     expect(current.id).toBe(published.id);
-    expect([submittedVersion.id, published.id]).toContain(accepted.terms_version_id);
-    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and terms_version_id=${accepted.terms_version_id}`).toHaveLength(1);
-    expect(await sql`select id from audit_events where event_type='consent.accepted' and entity_id=${acceptResult.id}`).toHaveLength(1);
-    const { productionConsentStatusProvider } = await import("./consent-status");
-    if (accepted.terms_version_id === submittedVersion.id) {
-      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(false);
-      const resumed = await acceptCurrentTermsAndActivate(userId);
-      expect(resumed.termsVersionId).toBe(published.id);
-      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
+    if (acceptOutcome.status === "fulfilled") {
+      expect(acceptOutcome.value.termsVersionId).toBe(submittedVersion.id);
+      expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and terms_version_id=${submittedVersion.id}`).toHaveLength(1);
+      expect(await sql`select id from audit_events where event_type='consent.accepted' and entity_id=${acceptOutcome.value.id}`).toHaveLength(1);
     } else {
-      expect(accepted.terms_version_id).toBe(published.id);
-      await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
+      expect(acceptOutcome.reason).toMatchObject({ code: "CONFLICT", remedy: { action: "reload_consent" } });
+      expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and terms_version_id=${submittedVersion.id}`).toHaveLength(0);
     }
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and terms_version_id=${published.id}`).toHaveLength(0);
+    const { productionConsentStatusProvider } = await import("./consent-status");
+    await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(false);
+    const currentTerms = await readCurrentTermsPrecondition();
+    expect(currentTerms).toEqual({ termsVersionId: published.id, termsPayloadSha256: published.payloadSha256 });
+    const resumed = await acceptCurrentTermsAndActivate(userId, currentTerms);
+    expect(resumed.termsVersionId).toBe(published.id);
+    await expect(productionConsentStatusProvider.hasCurrentConsent(userId)).resolves.toBe(true);
   });
 
   it("fails closed when same-version replay evidence has a different payload hash", async () => {
     const userId = randomUUID();
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'hash-replay@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Hash Replay', 'hash-replay@example.test', 'invited')`;
-    const { acceptCurrentTermsAndActivate } = await import("./acceptance");
-    const accepted = await acceptCurrentTermsAndActivate(userId);
+    const { acceptCurrentTermsAndActivate, declineCurrentTerms } = await import("./acceptance");
+    const expectedTerms = await readCurrentTermsPrecondition();
+    const accepted = await acceptCurrentTermsAndActivate(userId, expectedTerms);
     const [original] = await sql<{ terms_payload_sha256: string }[]>`select terms_payload_sha256 from acceptance_records where id=${accepted.id}`;
     await sql`alter table acceptance_records disable trigger acceptance_records_immutable`;
     try {
       await sql`update acceptance_records set terms_payload_sha256=${"f".repeat(64)} where id=${accepted.id}`;
-      await expect(acceptCurrentTermsAndActivate(userId)).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(acceptCurrentTermsAndActivate(userId, expectedTerms)).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(declineCurrentTerms(userId)).rejects.toMatchObject({ code: "CONFLICT" });
       expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(1);
+      expect((await sql<{ account_state: string }[]>`select account_state from profiles where id=${userId}`)[0]!.account_state).toBe("active");
+      expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(0);
     } finally {
       await sql`update acceptance_records set terms_payload_sha256=${original.terms_payload_sha256} where id=${accepted.id}`;
       await sql`alter table acceptance_records enable trigger acceptance_records_immutable`;
@@ -211,7 +232,7 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     await sql`create trigger story_3_2_reject_activation before update on profiles for each row execute function pg_temp.reject_story_3_2_activation()`;
     const before = (await sql<{ chain_position: string; head_hmac: string }[]>`select chain_position::text, head_hmac from acceptance_chain_head where singleton=1`)[0]!;
     const { acceptCurrentTermsAndActivate } = await import("./acceptance");
-    await expect(acceptCurrentTermsAndActivate(userId)).rejects.toThrow();
+    await expect(acceptCurrentTermsAndActivate(userId, await readCurrentTermsPrecondition())).rejects.toThrow();
     await sql`drop trigger story_3_2_reject_activation on profiles`;
     expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(0);
     expect(await sql`select id from audit_events where event_type='consent.accepted' and actor_id=${userId}`).toHaveLength(0);
@@ -230,11 +251,12 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(1);
     expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(0);
 
-    const accepted = await acceptCurrentTermsAndActivate(userId);
+    const expectedTerms = await readCurrentTermsPrecondition();
+    const accepted = await acceptCurrentTermsAndActivate(userId, expectedTerms);
     const firstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${userId}`)[0]!.first_accepted_at;
     await expect(declineCurrentTerms(userId)).rejects.toMatchObject({ code: "CONFLICT" });
     await sql`update profiles set account_state='inactive_declined' where id=${userId}`;
-    const replayAcceptance = await acceptCurrentTermsAndActivate(userId);
+    const replayAcceptance = await acceptCurrentTermsAndActivate(userId, expectedTerms);
     const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
     expect(profile.account_state).toBe("active");
     expect(profile.first_accepted_at.toISOString()).toBe(firstAcceptedAt.toISOString());
@@ -249,7 +271,7 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'race@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
     await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Race Synthetic', 'race@example.test', 'invited')`;
     const { acceptCurrentTermsAndActivate, declineCurrentTerms } = await import("./acceptance");
-    const [acceptResult, declineResult] = await Promise.allSettled([acceptCurrentTermsAndActivate(userId), declineCurrentTerms(userId)]);
+    const [acceptResult, declineResult] = await Promise.allSettled([acceptCurrentTermsAndActivate(userId, await readCurrentTermsPrecondition()), declineCurrentTerms(userId)]);
     const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
     expect(acceptResult.status).toBe("fulfilled");
     expect(profile.account_state).toBe("active");
@@ -283,13 +305,19 @@ describeDatabase("Story 3.1 consent store matrix", () => {
   });
 
   it("crypto-shreds idempotently, leaving no decryptable key and exactly one tombstone", async () => {
-    const { appendAcceptance, cryptoShredAcceptancePii } = await import("./acceptance"); const user = randomUUID();
-    await appendAcceptance(user, { email: "erase@example.test", fullName: "Synthetic Erase" });
+    const { acceptCurrentTermsAndActivate, appendAcceptance, cryptoShredAcceptancePii } = await import("./acceptance"); const user = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${user}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'erase@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${user}, 'Synthetic Erase', 'erase@example.test', 'invited')`;
+    const expectedTerms = await readCurrentTermsPrecondition();
+    await acceptCurrentTermsAndActivate(user, expectedTerms);
     const first = await cryptoShredAcceptancePii(user); const second = await cryptoShredAcceptancePii(user);
     expect(first.alreadyShredded).toBe(false); expect(second).toMatchObject({ id: first.id, alreadyShredded: true });
     expect(await sql`select user_id from consent_pii_keys where user_id=${user}`).toHaveLength(0);
     expect(await sql`select id from acceptance_records where user_id_snapshot=${user} and record_type='erasure_tombstone'`).toHaveLength(1);
     const { productionConsentStatusProvider } = await import("./consent-status"); await expect(productionConsentStatusProvider.hasCurrentConsent(user)).resolves.toBe(false);
+    await sql`update profiles set account_state='inactive_declined' where id=${user}`;
+    await expect(acceptCurrentTermsAndActivate(user, expectedTerms)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await sql<{ account_state: string }[]>`select account_state from profiles where id=${user}`)[0]!.account_state).toBe("inactive_declined");
     await expect(appendAcceptance(user, { email: "after@example.test", fullName: "After Erasure" })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
@@ -302,6 +330,20 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     await expect(sql`truncate acceptance_records`).rejects.toMatchObject({ code: "55000" });
     const [shape] = await sql<{ has_updated_at: boolean; live_fk_count: string }[]>`select exists(select 1 from information_schema.columns where table_schema='public' and table_name='acceptance_records' and column_name='updated_at') has_updated_at, (select count(*) from pg_constraint where conrelid='public.acceptance_records'::regclass and contype='f' and confrelid <> 'public.terms_versions'::regclass)::text live_fk_count`;
     expect(shape).toEqual({ has_updated_at: false, live_fk_count: "0" });
+  });
+  it("fails closed when the immutable current terms payload no longer matches its evidence hash", async () => {
+    const [current] = await sql<{ id: string; payload: unknown }[]>`select id, payload from terms_versions where locale='sv-SE' order by published_at desc, id desc limit 1`;
+    const [accepted] = await sql<{ user_id_snapshot: string }[]>`select acceptance.user_id_snapshot from acceptance_records acceptance where acceptance.record_type='acceptance' and acceptance.terms_version_id=${current.id} and not exists (select 1 from acceptance_records tombstone where tombstone.user_id_snapshot=acceptance.user_id_snapshot and tombstone.record_type='erasure_tombstone') limit 1`;
+    const { productionConsentStatusProvider } = await import("./consent-status");
+    await expect(productionConsentStatusProvider.hasCurrentConsent(accepted.user_id_snapshot)).resolves.toBe(true);
+    await sql`alter table terms_versions disable trigger terms_versions_immutable`;
+    try {
+      await sql`update terms_versions set payload=jsonb_set(payload, '{cards,0,body}', to_jsonb('Tampered body'::text)) where id=${current.id}`;
+      await expect(productionConsentStatusProvider.hasCurrentConsent(accepted.user_id_snapshot)).resolves.toBe(false);
+    } finally {
+      await sql`update terms_versions set payload=${sql.json(current.payload as never)} where id=${current.id}`;
+      await sql`alter table terms_versions enable trigger terms_versions_immutable`;
+    }
   });
   it("fails closed when persisted chain evidence is malformed", async () => {
     const [record] = await sql<{ id: string; hmac: string; user_id_snapshot: string }[]>`select id, hmac, user_id_snapshot from acceptance_records where record_type='acceptance' order by chain_position limit 1`;

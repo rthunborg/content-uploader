@@ -1,12 +1,15 @@
+/* eslint-disable react-hooks/rules-of-hooks -- Playwright fixture callbacks name their continuation `use`; these are not React Hooks. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 import { test as base, expect } from "@playwright/test";
+import postgres from "postgres";
 
 import { AuthPage } from "../pages/auth-page";
 
 type LocalAuth = {
+  sharedDatabaseLock: void;
   authPage: AuthPage;
   admin: ReturnType<typeof createClient>;
   latestLink(email: string): Promise<string>;
@@ -40,7 +43,7 @@ function statusEnvironment() {
       return match ? [[match[1], match[2]]] : [];
     }),
   );
-  for (const key of ["API_URL", "SERVICE_ROLE_KEY"] as const) {
+  for (const key of ["API_URL", "SERVICE_ROLE_KEY", "DB_URL"] as const) {
     if (!parsed[key]) {
       throw new Error(`Supabase status did not provide required ${key} for auth E2E.`);
     }
@@ -56,6 +59,7 @@ function statusEnvironment() {
 const env = statusEnvironment();
 const apiUrl = env.API_URL;
 const mailUrl = env.MAILPIT_URL;
+let syntheticTermsSequence = 0;
 
 async function mailpit(path: string, init?: RequestInit) {
   let response: Response;
@@ -102,19 +106,29 @@ async function latestLink(email: string) {
 }
 
 export const test = base.extend<LocalAuth>({
+  sharedDatabaseLock: [async ({}, use) => {
+    const database = postgres(env.DB_URL, { max: 1, prepare: false });
+    await database`select pg_advisory_lock(${3_100_099})`;
+    try {
+      await use();
+    } finally {
+      try {
+        await database`select pg_advisory_unlock(${3_100_099})`;
+      } finally {
+        await database.end();
+      }
+    }
+  }, { auto: true, timeout: 600_000 }],
   authPage: async ({ page }, use) => use(new AuthPage(page)),
   admin: async ({}, use) => use(createClient(apiUrl, env.SERVICE_ROLE_KEY, { auth: { persistSession: false } })),
   latestLink: async ({}, use) => use(latestLink),
   clearMail: async ({}, use) => use(clearMail),
   publishSyntheticTerms: async ({ admin }, use) => use(async () => {
-    const payload: SyntheticTerms = { schemaVersion: 1, version: "99.32.0", locale: "sv-SE", cards: [
+    const payload: SyntheticTerms = { schemaVersion: 1, version: `99.${Date.now()}.${syntheticTermsSequence++}`, locale: "sv-SE", cards: [
       { id: "content_usage", title: "Syntetiskt samtycke: innehåll", body: "Detta är omisskännligt syntetisk testtext för innehåll.", legalTextMarkdown: "Fullständig syntetisk juridisk text för innehåll." },
       { id: "bystander_consent", title: "Syntetiskt samtycke: personer", body: "Detta är omisskännligt syntetisk testtext för personer.", legalTextMarkdown: "Fullständig syntetisk juridisk text för personer." },
       { id: "user_control", title: "Syntetiskt samtycke: kontroll", body: "Detta är omisskännligt syntetisk testtext för kontroll.", legalTextMarkdown: "Fullständig syntetisk juridisk text för kontroll." },
     ] };
-    const existing = await admin.from("terms_versions").select("id,payload").eq("version", payload.version).eq("locale", payload.locale).maybeSingle();
-    expect(existing.error).toBeNull();
-    if (existing.data) return { id: existing.data.id, payload: existing.data.payload as SyntheticTerms };
     const payloadSha256 = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
     const inserted = await admin.from("terms_versions").insert({ version: payload.version, locale: payload.locale, schema_version: 1, payload, payload_sha256: payloadSha256 }).select("id").single();
     expect(inserted.error).toBeNull(); return { id: inserted.data!.id, payload };

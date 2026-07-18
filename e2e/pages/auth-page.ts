@@ -19,6 +19,7 @@ export class AuthPage {
     name: string,
   ) {
     const target = this.page.getByRole(role, { name });
+    await expect(target).toBeEnabled();
     const box = await target.boundingBox();
     expect(box, `${name} must have a rendered target`).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);

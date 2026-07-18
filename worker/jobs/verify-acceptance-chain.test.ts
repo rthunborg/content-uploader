@@ -18,6 +18,21 @@ function ledgerFixture() {
 afterEach(() => initializeLogger());
 describe("acceptance chain verifier", () => { it("accepts a valid signed ledger and head", async () => expect(verifyAcceptanceChain(fixture(), key)).resolves.toBeUndefined()); it("detects tail truncation and emits one sanitized critical event", async () => { const output = vi.fn(); initializeLogger(output); const source = fixture(); const reader = { records: async () => [], head: source.head }; await expect(runAcceptanceChainVerification(reader, key)).resolves.toBe(false); expect(output).toHaveBeenCalledOnce(); const line = JSON.parse(output.mock.calls[0]![0]); expect(line).toMatchObject({ level: "critical", event: "acceptance_chain.integrity_failed", context: { job: "verify-acceptance-chain" } }); }); });
 
+it("propagates snapshot failures without misreporting them as ledger corruption", async () => {
+  const output = vi.fn(); initializeLogger(output);
+  const failure = new Error("database unavailable");
+  await expect(runAcceptanceChainVerification({ records: async () => [], head: async () => null, snapshot: async () => { throw failure; } }, key)).rejects.toBe(failure);
+  expect(output).not.toHaveBeenCalled();
+});
+
+it("propagates missing configuration before reading or acknowledging a job", async () => {
+  const prior = process.env.ACCEPTANCE_HMAC_KEY; delete process.env.ACCEPTANCE_HMAC_KEY;
+  const snapshot = vi.fn();
+  try { await expect(runAcceptanceChainVerification({ records: async () => [], head: async () => null, snapshot })).rejects.toThrow(/ACCEPTANCE_HMAC_KEY/); }
+  finally { if (prior === undefined) delete process.env.ACCEPTANCE_HMAC_KEY; else process.env.ACCEPTANCE_HMAC_KEY = prior; }
+  expect(snapshot).not.toHaveBeenCalled();
+});
+
 it("prefers an atomic snapshot over separately timed reads", async () => { const source = fixture(); const snapshot = vi.fn().mockResolvedValue({ records: await source.records(), head: await source.head() }); const records = vi.fn(); const head = vi.fn(); await expect(verifyAcceptanceChain({ records, head, snapshot }, key)).resolves.toBeUndefined(); expect(snapshot).toHaveBeenCalledOnce(); expect(records).not.toHaveBeenCalled(); expect(head).not.toHaveBeenCalled(); });
 
 it("accepts the pristine migrated empty-chain sentinel", async () => { await expect(verifyAcceptanceChain({ records: async () => [], head: async () => ({ chain_position: "0", head_hmac: "0".repeat(64), signature: "0".repeat(64) }) }, key)).resolves.toBeUndefined(); });

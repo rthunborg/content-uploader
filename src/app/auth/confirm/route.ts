@@ -6,6 +6,7 @@ import {
   supportedEmailOtpType,
 } from "@/app/auth/auth-flow";
 import { safeContinuation } from "@/lib/auth/continuation";
+import { requireAdmin } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { logError } from "@/shared/logger";
 import { getOwnAccountState } from "@/features/consent/dal/pre-consent";
@@ -37,6 +38,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(buildLinkErrorUrl(request.nextUrl, next));
   }
   try {
+    try {
+      await requireAdmin();
+      return NextResponse.redirect(new URL(next, request.url));
+    } catch (error) {
+      // A non-admin ambassador is expected to fail this role probe and then use
+      // the narrow pre-consent account-state route below. Other admin/auth state
+      // failures stay fail-closed and are handled by the outer domain mapping.
+      if (!(error instanceof DomainError && error.code === "FORBIDDEN")) throw error;
+    }
     const state = await getOwnAccountState();
     return NextResponse.redirect(new URL(state === "active" ? next : state === "invited" || state === "inactive_declined" ? `/auth/consent?next=${encodeURIComponent(next)}` : "/auth/paused", request.url));
   } catch (error) {

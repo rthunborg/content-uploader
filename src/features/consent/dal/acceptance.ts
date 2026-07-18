@@ -5,18 +5,29 @@ import { sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { DomainError } from "@/lib/errors";
 import { audit } from "@/shared/audit";
-import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, validateConsentKeys, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
+import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, validateConsentKeys, verifyAcceptanceLedger, ZERO_HMAC, type CryptoEnvelope, type LedgerRecord } from "../crypto";
 import { CURRENT_TERMS_LOCK_ID, readCurrentTerms } from "./terms";
 
 const CHAIN_LOCK_ID = 3_100_001;
 type Identity = { email: string; fullName: string };
-type LockedHead = { chain_position: string; head_hmac: string };
+type ConsentTransaction = Parameters<Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]>[0];
+type LockedHead = { chain_position: string; head_hmac: string; signature: string };
+type StoredLedgerRecord = { id: string; record_type: "acceptance" | "erasure_tombstone"; user_id_snapshot: string; terms_version_id: string | null; terms_payload_sha256: string | null; occurred_at: Date | string; chain_position: string; prev_hmac: string; hmac: string };
 type StoredKey = { wrapped_key_ciphertext: string; wrapped_key_nonce: string; wrapped_key_tag: string };
+type VerifiedLedger = { records: LedgerRecord[]; head: LockedHead };
 
-async function appendChainRecord(tx: Parameters<Parameters<ReturnType<typeof getDatabase>["transaction"]>[0]>[0], input: { recordType: "acceptance" | "erasure_tombstone"; userId: string; termsVersionId: string | null; termsPayloadSha256: string | null; identity: Identity | null }) {
+async function readVerifiedLedger(tx: ConsentTransaction): Promise<VerifiedLedger> {
   await tx.execute(sql`select pg_advisory_xact_lock(${CHAIN_LOCK_ID})`);
-  const [head] = await tx.execute<LockedHead>(sql`select chain_position, head_hmac from public.acceptance_chain_head where singleton = 1 for update`);
-  if (!head) throw new Error("Acceptance chain head is missing");
+  const rows = await tx.execute<StoredLedgerRecord>(sql`select id, record_type, user_id_snapshot, terms_version_id, terms_payload_sha256, occurred_at, chain_position, prev_hmac, hmac from public.acceptance_records order by chain_position`);
+  const [head] = await tx.execute<LockedHead>(sql`select chain_position, head_hmac, signature from public.acceptance_chain_head where singleton = 1 for update`);
+  if (!head) throw new DomainError("CONFLICT", "Samtyckeshistoriken kunde inte verifieras. Inget har ändrats.");
+  const records: LedgerRecord[] = rows.map((record) => ({ chainPosition: record.chain_position, recordId: record.id, recordType: record.record_type, userIdSnapshot: record.user_id_snapshot, termsVersionId: record.terms_version_id, termsPayloadSha256: record.terms_payload_sha256, occurredAt: record.occurred_at, prevHmac: record.prev_hmac, hmac: record.hmac }));
+  if (!verifyAcceptanceLedger(records, { chainPosition: head.chain_position, headHmac: head.head_hmac, signature: head.signature })) throw new DomainError("CONFLICT", "Samtyckeshistoriken kunde inte verifieras. Inget har ändrats.");
+  return { records, head };
+}
+
+async function appendChainRecord(tx: ConsentTransaction, input: { recordType: "acceptance" | "erasure_tombstone"; userId: string; termsVersionId: string | null; termsPayloadSha256: string | null; identity: Identity | null }, verifiedLedger?: VerifiedLedger) {
+  const { head } = verifiedLedger ?? await readVerifiedLedger(tx);
   const chainPosition = BigInt(head.chain_position) + 1n;
   const prevHmac = head.head_hmac || ZERO_HMAC;
   const id = randomUUID();
@@ -43,6 +54,7 @@ async function appendChainRecord(tx: Parameters<Parameters<ReturnType<typeof get
 
 export async function appendAcceptance(userId: string, identity: Identity) {
   if (!identity.email.trim() || !identity.fullName.trim()) throw new DomainError("VALIDATION_FAILED", "Identitetsuppgifterna är ofullständiga.");
+  validateConsentKeys();
   const terms = await readCurrentTerms();
   if (!terms) throw new DomainError("CONFLICT", "Inga publicerade villkor finns att godkänna.");
   return getDatabase().transaction(async (tx) => { const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payloadSha256, identity }); // The audit event is immutable and never crypto-shredded, so it must not carry
@@ -53,6 +65,7 @@ await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapsh
 
 export type FirstLoginAcceptance = { id: string; occurredAt: Date; termsVersionId: string; alreadyAccepted: boolean };
 export type DeclineResult = { alreadyDeclined: boolean };
+export type TermsAcceptancePrecondition = { termsVersionId: string; termsPayloadSha256: string };
 
 /** Pauses an invited ambassador without changing acceptance evidence. */
 export async function declineCurrentTerms(userId: string): Promise<DeclineResult> {
@@ -77,6 +90,7 @@ export async function declineCurrentTerms(userId: string): Promise<DeclineResult
     if (!parsed.success || termsPayloadSha256(parsed.data) !== terms.payload_sha256) {
       throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
     }
+    await readVerifiedLedger(tx);
     if (profile.account_state === "active") {
       const [currentAcceptance] = await tx.execute<{ id: string }>(sql`
         select id from public.acceptance_records
@@ -97,7 +111,8 @@ export async function declineCurrentTerms(userId: string): Promise<DeclineResult
 }
 
 /** Accepts the authoritative current terms and activates an invited profile atomically. */
-export async function acceptCurrentTermsAndActivate(userId: string): Promise<FirstLoginAcceptance> {
+export async function acceptCurrentTermsAndActivate(userId: string, expectedTerms: TermsAcceptancePrecondition): Promise<FirstLoginAcceptance> {
+  validateConsentKeys();
   return getDatabase().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${CURRENT_TERMS_LOCK_ID})`);
     const [profile] = await tx.execute<{ email: string; full_name: string | null; account_state: string; first_accepted_at: Date | null }>(sql`
@@ -112,9 +127,13 @@ export async function acceptCurrentTermsAndActivate(userId: string): Promise<Fir
       where locale = 'sv-SE' order by published_at desc, id desc limit 1
     `);
     if (!terms) throw new DomainError("CONFLICT", "Inga publicerade villkor finns att godkänna.");
+    if (terms.id !== expectedTerms.termsVersionId || terms.payload_sha256 !== expectedTerms.termsPayloadSha256) throw new DomainError("CONFLICT", undefined, { action: "reload_consent" });
     const { termsManifestSchema } = await import("./terms");
     const parsedTerms = termsManifestSchema.safeParse(terms.payload);
     if (!parsedTerms.success || termsPayloadSha256(parsedTerms.data) !== terms.payload_sha256) throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
+
+    const ledger = await readVerifiedLedger(tx);
+    if (ledger.records.some((record) => record.userIdSnapshot === userId && record.recordType === "erasure_tombstone")) throw new DomainError("CONFLICT", "Raderad samtyckeshistorik kan inte återöppnas.");
 
     const [existing] = await tx.execute<{ id: string; occurred_at: Date; terms_payload_sha256: string }>(sql`
       select id, occurred_at, terms_payload_sha256 from public.acceptance_records
@@ -128,7 +147,7 @@ export async function acceptCurrentTermsAndActivate(userId: string): Promise<Fir
     }
     if (profile.account_state !== "invited" && profile.account_state !== "inactive_declined" && profile.account_state !== "active") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
 
-    const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, identity: { email: profile.email, fullName: profile.full_name } });
+    const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, identity: { email: profile.email, fullName: profile.full_name } }, ledger);
     await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, occurredAt: result.occurredAt.toISOString() } } });
     await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${result.occurredAt.toISOString()}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
     return { ...result, termsVersionId: terms.id, alreadyAccepted: false };

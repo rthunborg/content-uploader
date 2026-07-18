@@ -13,6 +13,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 type AuthUser = { id: string; email?: string; app_metadata?: Record<string, unknown> };
 export type UserActor = { actorId: string; actorNameSnapshot: string };
 export type UserContext = UserActor & { userId: string; accountState: ProfileRow["accountState"]; role: "ambassador" };
+export type UserPreConsentContext = UserContext & { identityComplete: boolean };
 export type AdminContext = UserActor & { userId: string; accountState: ProfileRow["accountState"]; role: "admin" };
 export type SystemContext = { actorId: null; actorNameSnapshot: "system"; role: "system" };
 
@@ -57,13 +58,13 @@ export function createAuthGuards(deps: Dependencies) {
   }
 
   return {
-    async requireUserPreConsent(): Promise<UserContext> {
+    async requireUserPreConsent(): Promise<UserPreConsentContext> {
       const { user, profile } = await authenticated();
       if (user.app_metadata?.admin === true) throw new DomainError("FORBIDDEN", "Ambassadörsåtkomst krävs.");
       if (!(["active", "invited", "inactive_declined"] as const).includes(profile.accountState as "active" | "invited" | "inactive_declined")) {
         throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
       }
-      return { ...actor(user, profile), userId: user.id, accountState: profile.accountState, role: "ambassador" };
+      return { ...actor(user, profile), userId: user.id, accountState: profile.accountState, role: "ambassador", identityComplete: Boolean(profile.email.trim() && profile.fullName?.trim()) };
     },
     async requireUser(): Promise<UserContext> {
       const { user, profile } = await authenticated();

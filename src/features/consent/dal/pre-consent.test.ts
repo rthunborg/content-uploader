@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const mocks = vi.hoisted(() => ({ requirePre: vi.fn(), accept: vi.fn(), decline: vi.fn(), read: vi.fn(), parse: vi.fn(), hash: vi.fn() }));
+const mocks = vi.hoisted(() => ({ requirePre: vi.fn(), accept: vi.fn(), decline: vi.fn(), read: vi.fn(), parse: vi.fn(), hash: vi.fn(), validateKeys: vi.fn(), presentation: vi.fn(), logError: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireUserPreConsent: mocks.requirePre }));
+vi.mock("@/shared/logger", () => ({ logError: mocks.logError }));
 vi.mock("./acceptance", () => ({ acceptCurrentTermsAndActivate: mocks.accept, declineCurrentTerms: mocks.decline }));
 vi.mock("./terms", () => ({ readCurrentTerms: mocks.read, termsManifestSchema: { safeParse: mocks.parse } }));
-vi.mock("../crypto", () => ({ termsPayloadSha256: mocks.hash }));
-import { acceptTerms, declineTerms, getCurrentTerms } from "./pre-consent";
+vi.mock("../crypto", () => ({ termsPayloadSha256: mocks.hash, validateConsentKeys: mocks.validateKeys }));
+vi.mock("./consent-status", () => ({ readVerifiedReacceptanceContext: mocks.presentation }));
+import { acceptTerms, declineTerms, getConsentPresentation, getCurrentTerms } from "./pre-consent";
 
-beforeEach(() => { mocks.requirePre.mockReset().mockResolvedValue({ userId: "00000000-0000-4000-8000-000000000001", accountState: "invited" }); mocks.accept.mockReset().mockResolvedValue({ id: "record" }); mocks.decline.mockReset().mockResolvedValue({ alreadyDeclined: false }); mocks.read.mockReset().mockResolvedValue({ id: "terms", payload: { cards: [] }, payloadSha256: "trusted" }); mocks.parse.mockReset().mockReturnValue({ success: true, data: { cards: [1, 2, 3] } }); mocks.hash.mockReset().mockReturnValue("trusted"); });
+beforeEach(() => { mocks.requirePre.mockReset().mockResolvedValue({ userId: "00000000-0000-4000-8000-000000000001", accountState: "invited", identityComplete: true }); mocks.accept.mockReset().mockResolvedValue({ id: "record" }); mocks.decline.mockReset().mockResolvedValue({ alreadyDeclined: false }); mocks.read.mockReset().mockResolvedValue({ id: "terms", payload: { cards: [] }, payloadSha256: "trusted" }); mocks.parse.mockReset().mockReturnValue({ success: true, data: { cards: [1, 2, 3] } }); mocks.hash.mockReset().mockReturnValue("trusted"); mocks.validateKeys.mockReset(); mocks.presentation.mockReset().mockResolvedValue({ mode: "current", currentTerms: { id: "terms" }, changedCardIds: [] }); mocks.logError.mockReset(); });
 describe("pre-consent DAL", () => {
   it("reads and validates current terms only after requireUserPreConsent", async () => { await expect(getCurrentTerms()).resolves.toEqual({ id: "terms", payload: { cards: [1, 2, 3] }, payloadSha256: "trusted" }); expect(mocks.requirePre).toHaveBeenCalledOnce(); expect(mocks.read).toHaveBeenCalledOnce(); });
   it("fails closed for an incomplete published payload", async () => { mocks.parse.mockReturnValue({ success: false }); await expect(getCurrentTerms()).resolves.toBeNull(); });
   it("fails closed when the published payload does not match its evidence hash", async () => { mocks.hash.mockReturnValue("different"); await expect(getCurrentTerms()).resolves.toBeNull(); });
-  it("delegates atomic acceptance for the authenticated user", async () => { await acceptTerms(); expect(mocks.requirePre).toHaveBeenCalledOnce(); expect(mocks.accept).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001"); });
+  it("delegates atomic acceptance with the terms evidence shown to the authenticated user", async () => { const expectedTerms = { termsVersionId: "terms", termsPayloadSha256: "trusted" }; await acceptTerms(expectedTerms); expect(mocks.requirePre).toHaveBeenCalledOnce(); expect(mocks.accept).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001", expectedTerms); });
   it("delegates atomic decline for the authenticated user", async () => { await declineTerms(); expect(mocks.requirePre).toHaveBeenCalledOnce(); expect(mocks.decline).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001"); });
+  it("blocks presentation before reading terms when identity is incomplete", async () => { mocks.requirePre.mockResolvedValueOnce({ userId: "00000000-0000-4000-8000-000000000001", accountState: "invited", identityComplete: false }); await expect(getConsentPresentation()).rejects.toMatchObject({ code: "VALIDATION_FAILED" }); expect(mocks.validateKeys).not.toHaveBeenCalled(); expect(mocks.presentation).not.toHaveBeenCalled(); });
+  it("blocks presentation and logs when cryptographic configuration is invalid", async () => { const configurationError = new Error("ACCEPTANCE_HMAC_KEY is required"); mocks.validateKeys.mockImplementationOnce(() => { throw configurationError; }); await expect(getConsentPresentation()).rejects.toThrow(/ACCEPTANCE_HMAC_KEY/); expect(mocks.logError).toHaveBeenCalledWith("consent.configuration_invalid", configurationError); expect(mocks.presentation).not.toHaveBeenCalled(); });
+  it("re-presents current cards to a declined user so replay can reactivate atomically", async () => { mocks.requirePre.mockResolvedValueOnce({ userId: "00000000-0000-4000-8000-000000000001", accountState: "inactive_declined", identityComplete: true }); await expect(getConsentPresentation()).resolves.toMatchObject({ mode: "first-login", changedCardIds: [] }); });
+  it("keeps current evidence as a redirect signal for an active user", async () => { mocks.requirePre.mockResolvedValueOnce({ userId: "00000000-0000-4000-8000-000000000001", accountState: "active", identityComplete: true }); await expect(getConsentPresentation()).resolves.toMatchObject({ mode: "current" }); });
 });

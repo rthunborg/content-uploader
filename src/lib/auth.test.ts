@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { createAuthGuards } from "./auth";
 
-const profile = { id: "user-1", email: "user@example.com", mobile: null, accountState: "active" as const, invitedAt: null, firstAcceptedAt: null, firstUploadAt: null, lastLoginAt: null, createdAt: new Date(), updatedAt: new Date() };
-function guards(user: { id: string; app_metadata?: Record<string, unknown> } | null, options: { session?: boolean; consent?: boolean; state?: string } = {}) {
-  return createAuthGuards({ getAuth: vi.fn().mockResolvedValue({ user, hadSession: options.session ?? false }), getProfile: vi.fn().mockResolvedValue(user ? { ...profile, accountState: options.state ?? "active" } : null), consent: { hasCurrentConsent: vi.fn().mockResolvedValue(options.consent ?? true) } });
+const profile = { id: "user-1", fullName: "User Example", email: "user@example.com", mobile: null, accountState: "active" as const, invitedAt: null, firstAcceptedAt: null, firstUploadAt: null, lastLoginAt: null, createdAt: new Date(), updatedAt: new Date() };
+function guards(user: { id: string; app_metadata?: Record<string, unknown> } | null, options: { session?: boolean; consent?: boolean; state?: string; fullName?: string | null } = {}) {
+  return createAuthGuards({ getAuth: vi.fn().mockResolvedValue({ user, hadSession: options.session ?? false }), getProfile: vi.fn().mockResolvedValue(user ? { ...profile, accountState: options.state ?? "active", fullName: options.fullName === undefined ? profile.fullName : options.fullName } : null), consent: { hasCurrentConsent: vi.fn().mockResolvedValue(options.consent ?? true) } });
 }
 
 describe("auth context matrix", () => {
@@ -43,5 +43,9 @@ describe("auth context matrix", () => {
   it("admits declined accounts only to the pre-consent boundary", async () => {
     await expect(guards({ id: "user-1" }, { state: "inactive_declined" }).requireUserPreConsent()).resolves.toMatchObject({ accountState: "inactive_declined" });
     await expect(guards({ id: "user-1" }, { state: "inactive_declined" }).requireUser()).rejects.toMatchObject({ code: "ACCOUNT_INACTIVE" });
+  });
+  it("reports whether the pre-consent identity is complete without exposing it", async () => {
+    await expect(guards({ id: "user-1" }).requireUserPreConsent()).resolves.toMatchObject({ identityComplete: true });
+    await expect(guards({ id: "user-1" }, { fullName: null }).requireUserPreConsent()).resolves.toMatchObject({ identityComplete: false });
   });
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DomainError } from "@/lib/errors";
 
 const mocks = vi.hoisted(() => ({ accept: vi.fn(), decline: vi.fn(), redirect: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
@@ -30,13 +31,19 @@ describe("declineConsent", () => {
 
 describe("acceptConsent", () => {
   it("waits for authoritative acceptance before resuming a safe deep continuation", async () => {
-    const data = new FormData(); data.set("next", "/tasks/open?theme=deck");
+    const data = new FormData(); data.set("next", "/tasks/open?theme=deck"); data.set("termsVersionId", "terms-v1"); data.set("termsPayloadSha256", "sha-v1");
     await expect(acceptConsent({ error: null }, data)).rejects.toThrow("REDIRECT:/tasks/open?theme=deck");
-    expect(mocks.accept).toHaveBeenCalledOnce();
+    expect(mocks.accept).toHaveBeenCalledWith({ termsVersionId: "terms-v1", termsPayloadSha256: "sha-v1" });
   });
 
   it("falls back to tasks after an unsafe continuation", async () => {
-    const data = new FormData(); data.set("next", "https://evil.example/steal");
+    const data = new FormData(); data.set("next", "https://evil.example/steal"); data.set("termsVersionId", "terms-v1"); data.set("termsPayloadSha256", "sha-v1");
     await expect(acceptConsent({ error: null }, data)).rejects.toThrow("REDIRECT:/tasks");
+  });
+
+  it("reloads consent when the published terms changed after presentation", async () => {
+    mocks.accept.mockRejectedValueOnce(new DomainError("CONFLICT", undefined, { action: "reload_consent" }));
+    const data = new FormData(); data.set("next", "/tasks/open"); data.set("termsVersionId", "terms-v1"); data.set("termsPayloadSha256", "sha-v1");
+    await expect(acceptConsent({ error: null }, data)).rejects.toThrow("REDIRECT:/auth/consent?next=%2Ftasks%2Fopen");
   });
 });

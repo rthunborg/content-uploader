@@ -24,6 +24,6 @@ export default async function ConsentPage({ searchParams }: { searchParams: Prom
     <p className="eyebrow">{CONSENT_COPY.eyebrow}</p>
     <h1>{presentation ? (presentation.mode === "reaccept" ? CONSENT_COPY.changedTitle : CONSENT_COPY.title) : CONSENT_COPY.unavailableTitle}</h1>
     <p className="intro">{presentation ? (presentation.mode === "reaccept" ? (hasMarkedChanges ? CONSENT_COPY.changedIntro : CONSENT_COPY.changedGeneric) : CONSENT_COPY.intro) : CONSENT_COPY.unavailableBody}</p>
-    {presentation ? <ConsentCardStack terms={presentation.currentTerms.payload} mode={presentation.mode} changedCardIds={presentation.changedCardIds} next={next === "/" ? "/tasks" : next} action={acceptConsent} declineAction={declineConsent} /> : <a className="primary-link" href={`/auth/consent?next=${encodeURIComponent(next)}`}>{CONSENT_COPY.retry}</a>}
+    {presentation ? <ConsentCardStack terms={presentation.currentTerms.payload} termsVersionId={presentation.currentTerms.id} termsPayloadSha256={presentation.currentTerms.payloadSha256} mode={presentation.mode} changedCardIds={presentation.changedCardIds} next={next === "/" ? "/tasks" : next} action={acceptConsent} declineAction={declineConsent} /> : <a className="primary-link" href={`/auth/consent?next=${encodeURIComponent(next)}`}>{CONSENT_COPY.retry}</a>}
   </main>;
 }

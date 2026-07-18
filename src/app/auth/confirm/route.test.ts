@@ -1,17 +1,19 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createClient, verifyOtp, getOwnAccountState, logError } = vi.hoisted(() => ({
+const { createClient, verifyOtp, getOwnAccountState, logError, requireAdmin } = vi.hoisted(() => ({
   createClient: vi.fn(),
   verifyOtp: vi.fn(),
   getOwnAccountState: vi.fn(),
   logError: vi.fn(),
+  requireAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: createClient,
 }));
 vi.mock("@/features/consent/dal/pre-consent", () => ({ getOwnAccountState }));
+vi.mock("@/lib/auth", () => ({ requireAdmin }));
 vi.mock("@/shared/logger", () => ({ logError }));
 
 import { GET } from "./route";
@@ -21,6 +23,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   createClient.mockResolvedValue({ auth: { verifyOtp } });
   verifyOtp.mockResolvedValue({ error: null });
+  requireAdmin.mockRejectedValue(new DomainError("FORBIDDEN", "Ambassadörskonto"));
   getOwnAccountState.mockResolvedValue("active");
 });
 
@@ -33,6 +36,13 @@ describe("GET /auth/confirm", () => {
     const response = await GET(request("token_hash=hash&type=magiclink&next=%2Ftasks"));
     expect(verifyOtp).toHaveBeenCalledWith({ token_hash: "hash", type: "magiclink" });
     expect(response.headers.get("location")).toBe("https://portal.example/tasks");
+  });
+
+  it("lets an active admin resume without entering the ambassador pre-consent boundary", async () => {
+    requireAdmin.mockResolvedValueOnce({ role: "admin" });
+    const response = await GET(request("token_hash=hash&type=magiclink&next=%2Fadmin%2Fambassadors"));
+    expect(response.headers.get("location")).toBe("https://portal.example/admin/ambassadors");
+    expect(getOwnAccountState).not.toHaveBeenCalled();
   });
 
   it.each([
