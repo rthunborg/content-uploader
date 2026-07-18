@@ -22,3 +22,4 @@ export async function getOwnAccountState() {
 
 export async function getCurrentTerms() { await preConsentContext("getCurrentTerms"); const { termsPayloadSha256 } = await import("../crypto"); const { readCurrentTerms, termsManifestSchema } = await import("./terms"); const terms = await readCurrentTerms(); if (!terms) return null; const parsed = termsManifestSchema.safeParse(terms.payload); return parsed.success && termsPayloadSha256(parsed.data) === terms.payloadSha256 ? { ...terms, payload: parsed.data } : null; }
 export async function acceptTerms() { const context = await preConsentContext("acceptTerms"); const { acceptCurrentTermsAndActivate } = await import("./acceptance"); return acceptCurrentTermsAndActivate(context.userId); }
+export async function declineTerms() { const context = await preConsentContext("declineTerms"); const { declineCurrentTerms } = await import("./acceptance"); return declineCurrentTerms(context.userId); }

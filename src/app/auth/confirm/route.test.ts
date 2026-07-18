@@ -70,6 +70,7 @@ describe("GET /auth/confirm", () => {
 
   it.each([
     ["invited", "https://portal.example/auth/consent?next=%2Ftasks"],
+    ["inactive_declined", "https://portal.example/auth/consent?next=%2Ftasks"],
     ["deactivated", "https://portal.example/auth/paused"],
   ])("routes %s accounts by server-side state", async (state, location) => {
     getOwnAccountState.mockResolvedValue(state);

@@ -49,9 +49,6 @@ export function createAuthGuards(deps: Dependencies) {
     }
     const profile = await deps.getProfile(user.id);
     if (!profile) throw new DomainError("FORBIDDEN", "Kontot saknar åtkomst.");
-    if (profile.accountState !== "active" && profile.accountState !== "invited") {
-      throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
-    }
     return { user, profile };
   }
 
@@ -62,11 +59,20 @@ export function createAuthGuards(deps: Dependencies) {
   return {
     async requireUserPreConsent(): Promise<UserContext> {
       const { user, profile } = await authenticated();
+      if (!(["active", "invited", "inactive_declined"] as const).includes(profile.accountState as "active" | "invited" | "inactive_declined")) {
+        throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
+      }
       return { ...actor(user, profile), userId: user.id, accountState: profile.accountState, role: "ambassador" };
     },
     async requireUser(): Promise<UserContext> {
       const { user, profile } = await authenticated();
       if (user.app_metadata?.admin === true) throw new DomainError("FORBIDDEN", "Ambassadörsåtkomst krävs.");
+      if (profile.accountState !== "active") {
+        // Invited ambassadors can still reach consent to activate, so route them
+        // there (preserving their continuation) rather than to the paused surface.
+        if (profile.accountState === "invited") throw new DomainError("CONSENT_REQUIRED", "Godkänn de aktuella villkoren för att fortsätta.", { action: "consent" });
+        throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
+      }
       if (!(await deps.consent.hasCurrentConsent(user.id))) {
         throw new DomainError("CONSENT_REQUIRED", "Godkänn de aktuella villkoren för att fortsätta.", { action: "consent" });
       }
@@ -75,6 +81,7 @@ export function createAuthGuards(deps: Dependencies) {
     async requireAdmin(): Promise<AdminContext> {
       const { user, profile } = await authenticated();
       if (user.app_metadata?.admin !== true) throw new DomainError("FORBIDDEN", "Administratörsåtkomst krävs.");
+      if (profile.accountState !== "active") throw new DomainError("ACCOUNT_INACTIVE", "Kontot är pausat.", { action: "paused" });
       return { ...actor(user, profile), userId: user.id, accountState: profile.accountState, role: "admin" };
     },
   };

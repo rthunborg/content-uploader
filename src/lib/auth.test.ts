@@ -35,4 +35,8 @@ describe("auth context matrix", () => {
   it("blocks inactive accounts", async () => {
     await expect(guards({ id: "user-1", app_metadata: { admin: true } }, { state: "deactivated" }).requireAdmin()).rejects.toMatchObject({ code: "ACCOUNT_INACTIVE" });
   });
+  it("admits declined accounts only to the pre-consent boundary", async () => {
+    await expect(guards({ id: "user-1" }, { state: "inactive_declined" }).requireUserPreConsent()).resolves.toMatchObject({ accountState: "inactive_declined" });
+    await expect(guards({ id: "user-1" }, { state: "inactive_declined" }).requireUser()).rejects.toMatchObject({ code: "ACCOUNT_INACTIVE" });
+  });
 });

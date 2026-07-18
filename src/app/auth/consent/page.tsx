@@ -2,7 +2,7 @@ import { safeContinuation } from "@/lib/auth/continuation";
 import { getCurrentTerms } from "@/features/consent/dal/pre-consent";
 import { ConsentCardStack } from "@/features/consent/components/consent-card-stack";
 import { CONSENT_COPY } from "@/features/consent/copy";
-import { acceptConsent } from "./actions";
+import { acceptConsent, declineConsent } from "./actions";
 import { DomainError } from "@/lib/errors";
 import { redirect } from "next/navigation";
 
@@ -20,6 +20,6 @@ export default async function ConsentPage({ searchParams }: { searchParams: Prom
     <p className="eyebrow">{CONSENT_COPY.eyebrow}</p>
     <h1>{terms ? CONSENT_COPY.title : CONSENT_COPY.unavailableTitle}</h1>
     <p className="intro">{terms ? CONSENT_COPY.intro : CONSENT_COPY.unavailableBody}</p>
-    {terms ? <ConsentCardStack terms={terms.payload} next={next === "/" ? "/tasks" : next} action={acceptConsent} /> : <a className="primary-link" href={`/auth/consent?next=${encodeURIComponent(next)}`}>{CONSENT_COPY.retry}</a>}
+    {terms ? <ConsentCardStack terms={terms.payload} next={next === "/" ? "/tasks" : next} action={acceptConsent} declineAction={declineConsent} /> : <a className="primary-link" href={`/auth/consent?next=${encodeURIComponent(next)}`}>{CONSENT_COPY.retry}</a>}
   </main>;
 }

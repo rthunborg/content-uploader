@@ -49,4 +49,5 @@ export class AuthPage {
   async advanceConsentCard() { await this.page.getByRole("button", { name: "Godkänn och fortsätt" }).click(); }
   async openConsentLegalText() { await this.page.getByRole("button", { name: "Läs hela villkorstexten" }).click(); }
   async finishConsent() { await this.page.getByRole("button", { name: "Godkänn och aktivera konto" }).click(); }
+  async declineConsent() { await this.page.getByRole("button", { name: "Pausa mitt konto" }).click(); }
 }

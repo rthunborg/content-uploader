@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
   try {
     const state = await getOwnAccountState();
-    return NextResponse.redirect(new URL(state === "active" ? next : state === "invited" ? `/auth/consent?next=${encodeURIComponent(next)}` : "/auth/paused", request.url));
+    return NextResponse.redirect(new URL(state === "active" ? next : state === "invited" || state === "inactive_declined" ? `/auth/consent?next=${encodeURIComponent(next)}` : "/auth/paused", request.url));
   } catch (error) {
     if (error instanceof DomainError) {
       const destination = error.code === "AUTH_REQUIRED" || error.code === "SESSION_REVOKED"

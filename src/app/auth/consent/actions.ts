@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { DomainError } from "@/lib/errors";
 import { safeContinuation } from "@/lib/auth/continuation";
-import { acceptTerms } from "@/features/consent/dal/pre-consent";
+import { acceptTerms, declineTerms } from "@/features/consent/dal/pre-consent";
 import { CONSENT_COPY } from "@/features/consent/copy";
 import type { ConsentActionState } from "@/features/consent/components/consent-card-stack";
 
@@ -18,4 +18,15 @@ export async function acceptConsent(_previous: ConsentActionState, formData: For
     return { error: error instanceof DomainError ? error.message : CONSENT_COPY.submitError };
   }
   redirect(next === "/" ? "/tasks" : next);
+}
+
+export async function declineConsent(_previous: ConsentActionState, formData: FormData): Promise<ConsentActionState> {
+  const next = safeContinuation(String(formData.get("next") ?? "/tasks"));
+  try { await declineTerms(); }
+  catch (error) {
+    if (error instanceof DomainError && (error.code === "AUTH_REQUIRED" || error.code === "SESSION_REVOKED")) redirect(`/auth/login?next=${encodeURIComponent(next)}`);
+    if (error instanceof DomainError && (error.code === "ACCOUNT_INACTIVE" || error.code === "FORBIDDEN")) redirect("/auth/paused");
+    return { error: error instanceof DomainError ? error.message : CONSENT_COPY.declineError };
+  }
+  redirect(`/auth/paused?next=${encodeURIComponent(next)}`);
 }

@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { DomainError } from "@/lib/errors";
 import { audit } from "@/shared/audit";
-import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
+import { createUserDataKey, encryptIdentityWithDataKey, signHead, signRecord, termsPayloadSha256, unwrapUserDataKey, validateConsentKeys, ZERO_HMAC, type CryptoEnvelope } from "../crypto";
 import { readCurrentTerms } from "./terms";
 
 const CHAIN_LOCK_ID = 3_100_001;
@@ -52,6 +52,39 @@ await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapsh
 }
 
 export type FirstLoginAcceptance = { id: string; occurredAt: Date; termsVersionId: string; alreadyAccepted: boolean };
+export type DeclineResult = { alreadyDeclined: boolean };
+
+/** Pauses an invited ambassador without changing acceptance evidence. */
+export async function declineCurrentTerms(userId: string): Promise<DeclineResult> {
+  validateConsentKeys();
+  return getDatabase().transaction(async (tx) => {
+    const [profile] = await tx.execute<{ account_state: string }>(sql`
+      select account_state from public.profiles where id = ${userId}::uuid for update
+    `);
+    if (!profile) throw new DomainError("FORBIDDEN", "Kontot saknar åtkomst.");
+    if (profile.account_state === "inactive_declined") return { alreadyDeclined: true };
+    if (profile.account_state !== "invited") {
+      throw new DomainError("CONFLICT", "Kontot kan inte pausas från sitt nuvarande läge.");
+    }
+    const [terms] = await tx.execute<{ id: string; payload: unknown; payload_sha256: string }>(sql`
+      select id, payload, payload_sha256 from public.terms_versions
+      where locale = 'sv-SE' order by published_at desc, id desc limit 1
+    `);
+    if (!terms) throw new DomainError("CONFLICT", "Inga publicerade villkor finns att ta ställning till.");
+    const { termsManifestSchema } = await import("./terms");
+    const parsed = termsManifestSchema.safeParse(terms.payload);
+    if (!parsed.success || termsPayloadSha256(parsed.data) !== terms.payload_sha256) {
+      throw new DomainError("CONFLICT", "De publicerade villkoren är ofullständiga.");
+    }
+    await tx.execute(sql`update public.profiles set account_state = 'inactive_declined', updated_at = now() where id = ${userId}::uuid`);
+    await audit.emit(tx, {
+      type: "consent.declined",
+      actor: { id: userId, nameSnapshot: userId },
+      entity: { id: userId, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256 } },
+    });
+    return { alreadyDeclined: false };
+  });
+}
 
 /** Accepts the authoritative current terms and activates an invited profile atomically. */
 export async function acceptCurrentTermsAndActivate(userId: string): Promise<FirstLoginAcceptance> {
@@ -78,10 +111,10 @@ export async function acceptCurrentTermsAndActivate(userId: string): Promise<Fir
       order by chain_position limit 1
     `);
     if (existing) {
-      if (profile.account_state === "invited") await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${existing.occurred_at}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
+      if (profile.account_state === "invited" || profile.account_state === "inactive_declined") await tx.execute(sql`update public.profiles set account_state = 'active', first_accepted_at = coalesce(first_accepted_at, ${existing.occurred_at}::timestamptz), updated_at = now() where id = ${userId}::uuid`);
       return { id: existing.id, occurredAt: existing.occurred_at, termsVersionId: terms.id, alreadyAccepted: true };
     }
-    if (profile.account_state !== "invited") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
+    if (profile.account_state !== "invited" && profile.account_state !== "inactive_declined") throw new DomainError("CONFLICT", "Kontot kan inte aktiveras från sitt nuvarande läge.");
 
     const result = await appendChainRecord(tx, { recordType: "acceptance", userId, termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, identity: { email: profile.email, fullName: profile.full_name } });
     await audit.emit(tx, { type: "consent.accepted", actor: { id: userId, nameSnapshot: userId }, entity: { id: result.id, snapshot: { termsVersionId: terms.id, termsPayloadSha256: terms.payload_sha256, occurredAt: result.occurredAt.toISOString() } } });

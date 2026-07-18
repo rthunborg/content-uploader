@@ -126,6 +126,59 @@ describeDatabase("Story 3.1 consent store matrix", () => {
     expect((await sql<{ chain_position: string; head_hmac: string }[]>`select chain_position::text, head_hmac from acceptance_chain_head where singleton=1`)[0]).toEqual(before);
   });
 
+  it("declines idempotently and supports locked self-service reactivation without duplicate evidence", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'decline@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Decline Synthetic', 'decline@example.test', 'invited')`;
+    const { acceptCurrentTermsAndActivate, declineCurrentTerms } = await import("./acceptance");
+    const [first, replay] = await Promise.all([declineCurrentTerms(userId), declineCurrentTerms(userId)]);
+    expect([first.alreadyDeclined, replay.alreadyDeclined].sort()).toEqual([false, true]);
+    expect((await sql<{ account_state: string }[]>`select account_state from profiles where id=${userId}`)[0]!.account_state).toBe("inactive_declined");
+    expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(1);
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId}`).toHaveLength(0);
+
+    const accepted = await acceptCurrentTermsAndActivate(userId);
+    const firstAcceptedAt = (await sql<{ first_accepted_at: Date }[]>`select first_accepted_at from profiles where id=${userId}`)[0]!.first_accepted_at;
+    await expect(declineCurrentTerms(userId)).rejects.toMatchObject({ code: "CONFLICT" });
+    await sql`update profiles set account_state='inactive_declined' where id=${userId}`;
+    const replayAcceptance = await acceptCurrentTermsAndActivate(userId);
+    const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
+    expect(profile.account_state).toBe("active");
+    expect(profile.first_accepted_at.toISOString()).toBe(firstAcceptedAt.toISOString());
+    expect(replayAcceptance).toMatchObject({ id: accepted.id, alreadyAccepted: true });
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and record_type='acceptance'`).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and actor_id=${userId}`).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(1);
+  });
+
+  it("serializes an accept-versus-decline race into a coherent state", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'race@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Race Synthetic', 'race@example.test', 'invited')`;
+    const { acceptCurrentTermsAndActivate, declineCurrentTerms } = await import("./acceptance");
+    const [acceptResult, declineResult] = await Promise.allSettled([acceptCurrentTermsAndActivate(userId), declineCurrentTerms(userId)]);
+    const [profile] = await sql<{ account_state: string; first_accepted_at: Date }[]>`select account_state, first_accepted_at from profiles where id=${userId}`;
+    expect(acceptResult.status).toBe("fulfilled");
+    expect(profile.account_state).toBe("active");
+    expect(profile.first_accepted_at).toBeTruthy();
+    expect(await sql`select id from acceptance_records where user_id_snapshot=${userId} and record_type='acceptance'`).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.accepted' and actor_id=${userId}`).toHaveLength(1);
+    expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(declineResult.status === "fulfilled" ? 1 : 0);
+  });
+
+  it("rolls back the decline state when its audit transaction fails", async () => {
+    const userId = randomUUID();
+    await sql`insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at) values (${userId}, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'decline-rollback@example.test', '', now(), '{}'::jsonb, '{}'::jsonb, now(), now())`;
+    await sql`insert into profiles (id, full_name, email, account_state) values (${userId}, 'Decline Rollback Synthetic', 'decline-rollback@example.test', 'invited')`;
+    await sql`create function pg_temp.reject_story_3_3_decline_audit() returns trigger language plpgsql as $$ begin if new.event_type='consent.declined' then raise exception 'synthetic decline audit failure'; end if; return new; end $$`;
+    await sql`create trigger story_3_3_reject_decline_audit before insert on audit_events for each row execute function pg_temp.reject_story_3_3_decline_audit()`;
+    const { declineCurrentTerms } = await import("./acceptance");
+    await expect(declineCurrentTerms(userId)).rejects.toThrow();
+    await sql`drop trigger story_3_3_reject_decline_audit on audit_events`;
+    expect((await sql<{ account_state: string }[]>`select account_state from profiles where id=${userId}`)[0]!.account_state).toBe("invited");
+    expect(await sql`select id from audit_events where event_type='consent.declined' and actor_id=${userId}`).toHaveLength(0);
+  });
+
   it("serializes actual concurrent acceptance and tombstone appends without a fork", async () => {
     const { appendAcceptance, cryptoShredAcceptancePii } = await import("./acceptance");
     const userA = randomUUID(), userB = randomUUID();

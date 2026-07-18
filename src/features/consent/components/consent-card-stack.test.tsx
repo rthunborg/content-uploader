@@ -31,4 +31,12 @@ describe("ConsentCardStack", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stäng" }));
     await waitFor(() => expect(trigger).toBe(document.activeElement));
   });
+
+  it("offers decline only on the final card with a 44px secondary target", () => {
+    render(<ConsentCardStack terms={terms} next="/tasks" action={vi.fn()} declineAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Pausa mitt konto" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Godkänn och fortsätt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Godkänn och fortsätt" }));
+    expect(screen.getByRole("button", { name: "Pausa mitt konto" }).className).toContain("min-h-11");
+  });
 });
